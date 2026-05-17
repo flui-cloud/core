@@ -1,0 +1,129 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
+import { ConfigModule } from '@nestjs/config';
+import { ClusterEntity } from '../infrastructure/clusters/entities/cluster.entity';
+import { InfrastructureOperationEntity } from '../infrastructure/servers/entities/infrastructure-operations.entity';
+import { ApplicationEntity } from '../applications/entities/application.entity';
+import { SharedInfrastructureModule } from '../infrastructure/shared/shared-infrastructure.module';
+import { ClustersModule } from '../infrastructure/clusters/clusters.module';
+import { EncryptionModule } from '../shared/encryption/encryption.module';
+import { StorageModule } from '../storage/storage.module';
+
+import { BackupDestinationEntity } from './entities/backup-destination.entity';
+import { BackupPolicyEntity } from './entities/backup-policy.entity';
+import { BackupPolicyDestinationEntity } from './entities/backup-policy-destination.entity';
+import { BackupJobEntity } from './entities/backup-job.entity';
+import { BackupArtifactEntity } from './entities/backup-artifact.entity';
+import { BackupArtifactLocationEntity } from './entities/backup-artifact-location.entity';
+import { RestoreJobEntity } from './entities/restore-job.entity';
+
+import { BackupDestinationRepository } from './repositories/backup-destination.repository';
+import { BackupPolicyRepository } from './repositories/backup-policy.repository';
+import { BackupJobRepository } from './repositories/backup-job.repository';
+import { BackupArtifactRepository } from './repositories/backup-artifact.repository';
+import { RestoreJobRepository } from './repositories/restore-job.repository';
+
+import { BackupDestinationsService } from './services/backup-destinations.service';
+import { BackupPoliciesService } from './services/backup-policies.service';
+import { BackupJobsService } from './services/backup-jobs.service';
+import { RestoreJobsService } from './services/restore-jobs.service';
+import { VeleroInstallerService } from './services/velero-installer.service';
+import { VeleroClientService } from './services/velero-client.service';
+import { TemplateRendererService } from './services/template-renderer.service';
+import { EtcdSnapshotService } from './services/etcd-snapshot.service';
+
+import { InstallVeleroProcessor } from './processors/install-velero.processor';
+import {
+  RunBackupJobProcessor,
+  PreDeployTriggerProcessor,
+} from './processors/run-backup-job.processor';
+import { ReplicateBackupProcessor } from './processors/replicate-backup.processor';
+import { RunRestoreJobProcessor } from './processors/run-restore-job.processor';
+import { HealthCheckProcessor } from './processors/health-check.processor';
+
+import { BackupDestinationsController } from './controllers/backup-destinations.controller';
+import { BackupPoliciesController } from './controllers/backup-policies.controller';
+import { BackupJobsController } from './controllers/backup-jobs.controller';
+import { RestoreJobsController } from './controllers/restore-jobs.controller';
+import { QuickSetupController } from './controllers/quick-setup.controller';
+import { BillingEstimatorController } from './controllers/billing-estimator.controller';
+import { BackupStatusController } from './controllers/backup-status.controller';
+
+import { ClusterNodeEntity } from '../infrastructure/clusters/entities/cluster-node.entity';
+import { QuickSetupService } from './services/quick-setup.service';
+import { QuickSetupProcessor } from './processors/quick-setup.processor';
+import { BillingEstimatorService } from './services/billing-estimator.service';
+import { BackupPolicyScheduler } from './schedulers/backup-policy.scheduler';
+import { BackupStatusService } from './services/backup-status.service';
+
+import { BACKUP_QUEUE } from './backups.constants';
+
+@Module({
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([
+      BackupDestinationEntity,
+      BackupPolicyEntity,
+      BackupPolicyDestinationEntity,
+      BackupJobEntity,
+      BackupArtifactEntity,
+      BackupArtifactLocationEntity,
+      RestoreJobEntity,
+      ClusterEntity,
+      ClusterNodeEntity,
+      InfrastructureOperationEntity,
+      ApplicationEntity,
+    ]),
+    BullModule.registerQueue({ name: BACKUP_QUEUE }),
+    SharedInfrastructureModule,
+    ClustersModule,
+    EncryptionModule,
+    StorageModule,
+  ],
+  controllers: [
+    BackupDestinationsController,
+    BackupPoliciesController,
+    BackupJobsController,
+    RestoreJobsController,
+    QuickSetupController,
+    BillingEstimatorController,
+    BackupStatusController,
+  ],
+  providers: [
+    BackupDestinationRepository,
+    BackupPolicyRepository,
+    BackupJobRepository,
+    BackupArtifactRepository,
+    RestoreJobRepository,
+    BackupDestinationsService,
+    BackupPoliciesService,
+    BackupJobsService,
+    RestoreJobsService,
+    VeleroInstallerService,
+    VeleroClientService,
+    TemplateRendererService,
+    EtcdSnapshotService,
+    InstallVeleroProcessor,
+    RunBackupJobProcessor,
+    PreDeployTriggerProcessor,
+    ReplicateBackupProcessor,
+    RunRestoreJobProcessor,
+    HealthCheckProcessor,
+    QuickSetupService,
+    QuickSetupProcessor,
+    BillingEstimatorService,
+    BackupPolicyScheduler,
+    BackupStatusService,
+  ],
+  exports: [
+    BackupDestinationsService,
+    BackupPoliciesService,
+    BackupJobsService,
+    RestoreJobsService,
+    QuickSetupService,
+    BillingEstimatorService,
+    BackupStatusService,
+  ],
+})
+export class BackupsModule {}

@@ -1,0 +1,246 @@
+{
+  "_comment": "Pattern file for Docker image deploy hints. Add new patterns here without touching code. Restart required to reload.",
+  "_hint_types": {
+    "deployable": "Ready to deploy as-is — has an embedded server process",
+    "needs-sidecar": "Requires a reverse proxy or additional container to serve HTTP",
+    "cli-tool": "Command-line tool — no long-running server process, pod will exit immediately",
+    "build-image": "Build or development image — not intended for production workloads",
+    "base-os": "Base OS or language runtime — no application server embedded"
+  },
+  "_match_types": {
+    "contains": "tag includes the string anywhere",
+    "starts-with": "tag begins with the string",
+    "ends-with": "tag ends with the string",
+    "exact": "exact match"
+  },
+  "tagPatterns": [
+    {
+      "match": "fpm",
+      "matchType": "contains",
+      "hint": "needs-sidecar",
+      "reason": "PHP FastCGI Process Manager — requires nginx/Apache reverse proxy to serve HTTP"
+    },
+    {
+      "match": "cli",
+      "matchType": "starts-with",
+      "hint": "cli-tool",
+      "reason": "Command-line tool — no long-running server process, pod will exit immediately"
+    },
+    {
+      "match": "-cli",
+      "matchType": "ends-with",
+      "hint": "cli-tool",
+      "reason": "Command-line tool variant — not a server"
+    },
+    {
+      "match": "sdk",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Software Development Kit — build/dev image, not intended for production deploy"
+    },
+    {
+      "match": "jdk",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Java Development Kit — build image"
+    },
+    {
+      "match": "jre",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Java Runtime Environment — base runtime, no app server"
+    },
+    {
+      "match": "builder",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Build-only image variant"
+    },
+    {
+      "match": "-dev",
+      "matchType": "ends-with",
+      "hint": "build-image",
+      "reason": "Development variant — not intended for production"
+    },
+    {
+      "match": "-devel",
+      "matchType": "ends-with",
+      "hint": "build-image",
+      "reason": "Development variant"
+    },
+    {
+      "match": "windowsservercore",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Windows Server Core — not compatible with Linux K3s nodes"
+    },
+    {
+      "match": "nanoserver",
+      "matchType": "contains",
+      "hint": "build-image",
+      "reason": "Windows Nano Server — not compatible with Linux K3s nodes"
+    }
+  ],
+  "imagePatterns": [
+    {
+      "match": "ubuntu",
+      "hint": "base-os",
+      "reason": "Base OS image — no application server embedded"
+    },
+    {
+      "match": "debian",
+      "hint": "base-os",
+      "reason": "Base OS image (Debian Linux)"
+    },
+    {
+      "match": "alpine",
+      "hint": "base-os",
+      "reason": "Base OS image (Alpine Linux)"
+    },
+    {
+      "match": "centos",
+      "hint": "base-os",
+      "reason": "Base OS image (CentOS)"
+    },
+    {
+      "match": "fedora",
+      "hint": "base-os",
+      "reason": "Base OS image (Fedora)"
+    },
+    {
+      "match": "rockylinux",
+      "hint": "base-os",
+      "reason": "Base OS image (Rocky Linux)"
+    },
+    {
+      "match": "almalinux",
+      "hint": "base-os",
+      "reason": "Base OS image (AlmaLinux)"
+    },
+    {
+      "match": "amazonlinux",
+      "hint": "base-os",
+      "reason": "Base OS image (Amazon Linux)"
+    },
+    {
+      "match": "oraclelinux",
+      "hint": "base-os",
+      "reason": "Base OS image (Oracle Linux)"
+    },
+    {
+      "match": "node",
+      "hint": "base-os",
+      "reason": "Node.js runtime — base image without application server, build your app on top"
+    },
+    {
+      "match": "python",
+      "hint": "base-os",
+      "reason": "Python runtime — base image, no app server embedded"
+    },
+    {
+      "match": "golang",
+      "hint": "build-image",
+      "reason": "Go build environment — intended for multi-stage builds, not production deploy"
+    },
+    {
+      "match": "ruby",
+      "hint": "base-os",
+      "reason": "Ruby runtime — base image without web server"
+    },
+    {
+      "match": "php",
+      "hint": "base-os",
+      "reason": "PHP runtime — base image without web server (use php-apache or a framework image)"
+    },
+    {
+      "match": "openjdk",
+      "hint": "build-image",
+      "reason": "OpenJDK — Java runtime/build image, deploy a packaged JAR/WAR instead"
+    },
+    {
+      "match": "eclipse-temurin",
+      "hint": "build-image",
+      "reason": "Eclipse Temurin JDK — Java build/runtime image"
+    },
+    {
+      "match": "amazoncorretto",
+      "hint": "build-image",
+      "reason": "Amazon Corretto JDK — Java build/runtime image"
+    },
+    {
+      "match": "rust",
+      "hint": "build-image",
+      "reason": "Rust toolchain — build image, not intended for production deploy"
+    },
+    {
+      "match": "elixir",
+      "hint": "base-os",
+      "reason": "Elixir runtime — base image without Phoenix/Plug server"
+    },
+    {
+      "match": "erlang",
+      "hint": "base-os",
+      "reason": "Erlang runtime — base image"
+    },
+    {
+      "match": "scala",
+      "hint": "build-image",
+      "reason": "Scala build environment"
+    },
+    {
+      "match": "clojure",
+      "hint": "build-image",
+      "reason": "Clojure build environment"
+    },
+    {
+      "match": "swift",
+      "hint": "build-image",
+      "reason": "Swift toolchain — build image"
+    },
+    {
+      "match": "dart",
+      "hint": "build-image",
+      "reason": "Dart SDK — build image"
+    },
+    {
+      "match": "perl",
+      "hint": "base-os",
+      "reason": "Perl runtime — base image"
+    },
+    {
+      "match": "r-base",
+      "hint": "build-image",
+      "reason": "R statistical computing environment — not a web server"
+    },
+    {
+      "match": "composer",
+      "hint": "build-image",
+      "reason": "PHP Composer dependency manager — build/CI tool, not a server"
+    },
+    {
+      "match": "maven",
+      "hint": "build-image",
+      "reason": "Apache Maven — Java build tool"
+    },
+    {
+      "match": "gradle",
+      "hint": "build-image",
+      "reason": "Gradle — Java/Kotlin build tool"
+    },
+    {
+      "match": "ansible",
+      "hint": "cli-tool",
+      "reason": "Ansible automation tool — not a web server"
+    },
+    {
+      "match": "busybox",
+      "hint": "base-os",
+      "reason": "BusyBox — minimal Unix utilities, base image"
+    },
+    {
+      "match": "scratch",
+      "hint": "base-os",
+      "reason": "Empty base image — for building minimal containers"
+    }
+  ]
+}

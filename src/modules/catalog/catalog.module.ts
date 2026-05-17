@@ -1,0 +1,59 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
+import { CatalogAppDefinitionEntity } from './entities/catalog-app-definition.entity';
+import { CatalogInstallEntity } from './entities/catalog-install.entity';
+import { InfrastructureOperationEntity } from '../infrastructure/servers/entities/infrastructure-operations.entity';
+import { CatalogAppDefinitionRepository } from './repositories/catalog-app-definition.repository';
+import { CatalogInstallRepository } from './repositories/catalog-install.repository';
+import { CatalogService } from './services/catalog.service';
+import { CatalogManifestLoaderService } from './services/catalog-manifest-loader.service';
+import { CatalogSchemaValidatorService } from './services/catalog-schema-validator.service';
+import { CatalogTemplateResolverService } from './services/catalog-template-resolver.service';
+import { CatalogSecretGeneratorService } from './services/catalog-secret-generator.service';
+import { CatalogSeederService } from './services/catalog-seeder.service';
+import {
+  CatalogInstallerService,
+  CATALOG_INSTALL_QUEUE,
+} from './services/catalog-installer.service';
+import { CatalogDependencyResolverService } from './services/catalog-dependency-resolver.service';
+import { CatalogLinkingService } from './services/catalog-linking.service';
+import { CatalogInstallProcessor } from './processors/catalog-install.processor';
+import { CatalogController } from './controllers/catalog.controller';
+import { ApplicationsModule } from '../applications/applications.module';
+import { DnsModule } from '../dns/dns.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      CatalogAppDefinitionEntity,
+      CatalogInstallEntity,
+      InfrastructureOperationEntity,
+    ]),
+    BullModule.registerQueue({ name: CATALOG_INSTALL_QUEUE }),
+    ApplicationsModule,
+    DnsModule,
+  ],
+  controllers: [CatalogController],
+  providers: [
+    CatalogAppDefinitionRepository,
+    CatalogInstallRepository,
+    CatalogService,
+    CatalogManifestLoaderService,
+    CatalogSchemaValidatorService,
+    CatalogTemplateResolverService,
+    CatalogSecretGeneratorService,
+    CatalogSeederService,
+    CatalogInstallerService,
+    CatalogDependencyResolverService,
+    CatalogLinkingService,
+    CatalogInstallProcessor,
+  ],
+  exports: [
+    CatalogService,
+    CatalogInstallerService,
+    CatalogDependencyResolverService,
+    CatalogLinkingService,
+  ],
+})
+export class CatalogModule {}

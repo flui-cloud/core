@@ -1,0 +1,94 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: meilisearch
+  name: Meilisearch
+  description: >
+    Fast, typo-tolerant search engine with a built-in web dashboard.
+    Used as a building block by apps that need full-text search (Outline,
+    Plane, custom SaaS). Sub-50ms queries, faceted search, geo-search.
+    Dashboard available at the root URL for index management and query
+    testing.
+  appKind: APPLICATION
+  category: search
+  tags:
+    - search
+    - full-text-search
+    - building-block
+    - typo-tolerant
+  license: MIT
+  version: "1"
+  maintainedAt: "2026-04-22"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/meilisearch.svg
+  links:
+    website: https://www.meilisearch.com
+    docs: https://www.meilisearch.com/docs
+    source: https://github.com/meilisearch/meilisearch
+
+spec:
+  type: building-block
+
+  image:
+    registry: docker.io
+    repository: getmeili/meilisearch
+    tag: "v1"
+
+  ports:
+    - name: http
+      internal: 7700
+      expose: false
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /meili_data
+      required: true
+      size: 5Gi
+
+  env:
+    - name: MEILI_MASTER_KEY
+      valueFrom:
+        generate: secret
+        length: 32
+    - name: MEILI_ENV
+      value: production
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "4"
+        memory:
+          min: 128Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+          - CPUThrottling
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /health
+    port: 7700
+    initialDelay: 10s
+    interval: 15s
+    timeout: 5s
+    retries: 3
+
+  auth:
+    mode: none

@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+
+// Load environment variables FIRST, before any modules
+const dotenv = require('dotenv');
+const path = require('path');
+const os = require('os');
+
+// Load .env from CLI data directory and project root
+dotenv.config({ path: path.join(os.homedir(), '.flui', '.env') });
+dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+// Initialize module-alias to resolve 'src/*' paths at runtime.
+// Point it at the CLI package root so `flui` works from any CWD
+// (when invoked via `pnpm link --global`, CWD is wherever the user is).
+require('module-alias')(path.join(__dirname, '..'));
+
+require('@oclif/core').run().then(require('@oclif/core').flush).catch(require('@oclif/core').Errors.handle)

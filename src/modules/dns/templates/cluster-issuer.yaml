@@ -1,0 +1,21 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ISSUER_NAME}}
+  labels:
+    managed-by: flui-cloud
+spec:
+  acme:
+    server: {{ACME_SERVER}}
+    email: {{ACME_EMAIL}}
+    privateKeySecretRef:
+      name: {{PRIVATE_KEY_SECRET_REF}}
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+            ingressTemplate:
+              metadata:
+                annotations:
+                  traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+                  traefik.ingress.kubernetes.io/router.priority: "20000000"

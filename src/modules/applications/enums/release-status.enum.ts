@@ -1,0 +1,6 @@
+export enum ReleaseStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  SUCCEEDED = 'SUCCEEDED',
+  FAILED = 'FAILED',
+  ROLLED_BACK = 'ROLLED_BACK',
+}

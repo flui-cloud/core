@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{SLUG}}-headless
+  namespace: {{NAMESPACE}}
+  labels:
+{{LABELS_BLOCK}}
+spec:
+  clusterIP: None
+  selector:
+    app: {{SLUG}}
+  ports:
+    - port: {{PORT}}
+      targetPort: {{PORT}}
+      protocol: TCP

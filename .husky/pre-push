@@ -1,0 +1,8 @@
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --no-banner --redact || {
+    echo "gitleaks: secrets detected — push aborted."
+    exit 1
+  }
+else
+  echo "gitleaks not installed locally — skipping pre-push secret scan (CI still enforces)."
+fi

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{SLUG}}-{{VOLUME_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+{{LABELS_BLOCK}}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{SIZE}}
+{{STORAGE_CLASS_BLOCK}}

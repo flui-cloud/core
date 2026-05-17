@@ -1,0 +1,17 @@
+export enum ApplicationResourceKind {
+  DEPLOYMENT = 'Deployment',
+  STATEFUL_SET = 'StatefulSet',
+  DAEMON_SET = 'DaemonSet',
+  SERVICE = 'Service',
+  INGRESS = 'Ingress',
+  INGRESS_ROUTE = 'IngressRoute',
+  CONFIG_MAP = 'ConfigMap',
+  SECRET = 'Secret',
+  PERSISTENT_VOLUME_CLAIM = 'PersistentVolumeClaim',
+  HORIZONTAL_POD_AUTOSCALER = 'HorizontalPodAutoscaler',
+  CERTIFICATE = 'Certificate',
+  CLUSTER_ISSUER = 'ClusterIssuer',
+  JOB = 'Job',
+  CRON_JOB = 'CronJob',
+  NAMESPACE = 'Namespace',
+}

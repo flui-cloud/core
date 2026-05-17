@@ -1,0 +1,64 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flui-api-ingress
+  namespace: flui-system
+  labels:
+    app: flui-api
+    app.kubernetes.io/name: flui-api
+    app.kubernetes.io/managed-by: flui-cloud
+    app.kubernetes.io/instance: flui-api
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  tls:
+    - hosts:
+        - {{API_DOMAIN}}
+      secretName: {{TLS_SECRET_NAME}}
+  rules:
+    - host: {{API_DOMAIN}}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: flui-api
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flui-web-ingress
+  namespace: flui-system
+  labels:
+    app: flui-web
+    app.kubernetes.io/name: flui-web
+    app.kubernetes.io/managed-by: flui-cloud
+    app.kubernetes.io/instance: flui-web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  tls:
+    - hosts:
+        - {{APP_DOMAIN}}
+      secretName: {{TLS_SECRET_NAME}}
+  rules:
+    - host: {{APP_DOMAIN}}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: flui-api
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: flui-web
+                port:
+                  number: 80

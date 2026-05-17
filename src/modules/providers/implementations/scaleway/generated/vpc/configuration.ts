@@ -1,0 +1,137 @@
+/* tslint:disable */
+/* eslint-disable */
+/**
+ * VPC API
+ * VPC allows you to build your own **V**irtual **P**rivate **C**loud on top of Scaleway’s shared public cloud.   VPC currently comprises the regional Private Networks product. Layer 2 regional Private Networks sit inside the layer 3 VPC. Private Networks allows Scaleway resources (Instances, Load Balancers, Managed Databases etc.) within a single region to be interconnected through a dedicated, private, and flexible [L2 network](https://en.wikipedia.org/wiki/Data_link_layer).  You can add as many resources to your networks as you want, and add up to eight (8) different networks per resource. This allows you to run services isolated from the public internet and expose them to the rest of your infrastructure without worrying about public network filtering.  (switchcolumn) <Message type=\"note\"> VPC v2 is now in **General Availability**.  </Message>  <Message type=\"tip\"> Check out our [IPAM API](https://www.scaleway.com/en/developers/api/ipam/) to facilitate the management of IP addresses across your different Scaleway resources. </Message> (switchcolumn)  ## Concepts  Refer to our [dedicated concepts page](https://www.scaleway.com/en/docs/vpc/concepts/) to find definitions of all concepts and terminology related to VPC.  (switchcolumn) (switchcolumn)  ## Quickstart  1. **Configure your environment variables**      <Message type=\"note\">     This is an optional step that seeks to simplify your usage of the API. See the [Technical information](#technical-information) section below for help choosing an Availability Zone and Region. You can find your Project ID in the [Scaleway console](https://console.scaleway.com/project/settings).     </Message>      ```bash     export SCW_SECRET_KEY=\"<API secret key>\"     export SCW_DEFAULT_REGION=\"<Scaleway region>\"     export SCW_DEFAULT_ZONE=\"<Scaleway Availability Zone>\"     export SCW_PROJECT_ID=\"<Scaleway Project ID>\"     ```  2. **Create a Private Network**. Run the following command to create a Private Network. You can customize the details in the payload (name, tags etc.) to your needs.      ```bash     curl -X POST \\         -H \"X-Auth-Token: $SCW_SECRET_KEY\" \\         -H \"Content-Type: application/json\" \\         \"https://api.scaleway.com/vpc/v2/regions/$SCW_DEFAULT_REGION/private-networks\" \\         -d \'{             \"name\": \"My new Private Network\",             \"project_id\": \"\'\"$SCW_PROJECT_ID\"\'\",              \"tags\": [\"test\", \"dev\"]         }\'     ```      <Message type=\"tip\">     Keep the `id` field of the response: it is your Private Network ID, and is useable across all Scaleway products that support Private Networks. It may be useful to you to export the Private Network ID as a new environment variable `export PN_ID=\"<Your Private Network ID>`     </Message>      <Message type=\"tip\">     If you create a Private Network without specifying a VPC to create it in, the behavior depends on when you created your Scaleway Project. [Find out more](https://www.scaleway.com/en/docs/vpc/concepts/#default-vpc)     </Message>  3. **Attach a resource to your Private Network**. Each Scaleway product has its own API to interact with Private Networks. To attach an Instance, Managed Database, Elastic Metal server, Load Balancer or Public Gateway to your Private Network, see instructions in the documentation of the relevant product API. Here, we take the example of an Instance.      Use the following call to attach an Instance to your Private Network. Ensure you replace `<Instance ID>` with the ID of your Instance, and `<Private Network ID>` with the ID of your Private Network. Note that the Instance must be in an Availability Zone that is part of the region of your Private Network.      ```bash     curl -X POST \\         -H \"X-Auth-Token: $SCW_SECRET_KEY\" \\         -H \"Content-Type: application/json\" \\         \"https://api.scaleway.com/instance/v1/zones/$SCW_DEFAULT_ZONE/servers/<Instance ID>/private_nics\" \\         -d \'{\"private_network_id\": \"<Private Network ID>\"}\'     ```      <Message type=\"tip\">     Keep the `id` field of the response: it is your Private NIC ID. It may be useful to you to export     the Private NIC ID as a new environment variable `export NIC_ID=\"<Your Private NIC ID>`.     </Message>      <Message type=\"tip\">     Keep the `mac_address` field of the response, as it will allow you to identify the Private NIC inside your Instance. If successful, a new network interface will appear inside your Instance, ready to be configured to transmit traffic to other Instances of the same network, with the MAC address returned by the API call.     </Message>  4. **Confirm that the network interface has been plugged in**. To do this, connect to your Instance and run `dmseg`. You should see an output similar to the following:      ```bash     [1579004.592869] pci 0000:00:05.0: [1af4:1000] type 00 class 0x020000     [1579004.594835] pci 0000:00:05.0: reg 0x10: [io  0x0000-0x003f]     [1579004.596715] pci 0000:00:05.0: reg 0x14: [mem 0x00000000-0x00000fff]     [1579004.598732] pci 0000:00:05.0: reg 0x20: [mem 0x00000000-0x00003fff 64bit pref]     [1579004.600765] pci 0000:00:05.0: reg 0x30: [mem 0x00000000-0x0007ffff pref]     [1579004.603819] pci 0000:00:05.0: BAR 6: assigned [mem 0xc0100000-0xc017ffff pref]     [1579004.604582] pci 0000:00:05.0: BAR 4: assigned [mem 0x100000c000-0x100000ffff 64bit pref]     [1579004.605555] pci 0000:00:05.0: BAR 1: assigned [mem 0xc0003000-0xc0003fff]     [1579004.606383] pci 0000:00:05.0: BAR 0: assigned [io  0x1000-0x103f]     [1579004.607212] virtio-pci 0000:00:05.0: enabling device (0000 -> 0003)     [1579004.625149] PCI Interrupt Link [LNKA] enabled at IRQ 11     [1579004.644930] virtio_net virtio3 ens5: renamed from eth0     ```  5. **Confirm the presence of the network interface, and confirm its name if several networks are plugged into your Instance**. To do this, run `ip -br link`. You should see an output similar to the following:      ```bash     lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP>     ens2             UP             de:1c:94:44:d0:04 <BROADCAST,MULTICAST,UP,LOWER_UP>     ens5             DOWN           02:00:00:00:00:31 <BROADCAST,MULTICAST>     ens6             DOWN           02:00:00:00:01:5b <BROADCAST,MULTICAST>     ens7             DOWN           02:00:00:00:01:5e <BROADCAST,MULTICAST>     ```  6. **Configure the Instance\'s IP address**. DHCP is activated by default on new Private Networks, and automatically assigns IP addresses to resources on the network. If you have an older Private Network, [check whether DHCP is activated](https://www.scaleway.com/en/docs/vpc/reference-content/vpc-migration/) and either activate DHCP for automatic IP configuration, or [manually configure](https://www.scaleway.com/en/docs/instances/reference-content/manual-configuration-private-ips/) the network interface on your Instance if necessary.   7. **Delete your Private NIC**, which equates to unplugging your Instance from the Private Network. Use the following call. Ensure you replace `<Instance ID>` with the ID of your Instance, `<Private Network ID>` with the ID of your Private Network, and `<NIC ID>` with the ID of your Private NIC.      ```bash     curl -X DELETE \\         -H \"X-Auth-Token: $SCW_SECRET_KEY\" \\         -H \"Content-Type: application/json\" \\         \"https://api.scaleway.com/instance/v1/zones/$SCW_DEFAULT_ZONE/servers/<Instance ID>/private_nics/<NIC ID>\"     ```      The network interface disappears from your Instance.  8. **Delete your Private Network**. Use the following call. Ensure you replace `<Private Network ID>` with the ID of your Private Network.      ```bash     curl -X DELETE \\         -H \"X-Auth-Token: $SCW_SECRET_KEY\" \\         -H \"Content-Type: application/json\" \\         \"https://api.scaleway.com/vpc/v2/regions/$SCW_DEFAULT_REGION/private-networks/<Private Network ID>\"     ```      <Message type=\"note\">     Private Networks must be empty to be deleted. Ensure you have detached all resources and deleted all reserved IPs from your network prior to deletion.     </Message>     (switchcolumn)    <Message type=\"requirement\">     - You have a [Scaleway account](https://console.scaleway.com/)     - You have created an [API key](https://www.scaleway.com/en/docs/iam/how-to/create-api-keys/) and that the API key has sufficient [IAM permissions](https://www.scaleway.com/en/docs/iam/reference-content/permission-sets/) to perform the actions described on this page     - You have [installed `curl`](https://curl.se/download.html)     </Message>     (switchcolumn)  ## Technical information  VPC and Private Networks are available in the Paris, Amsterdam and Warsaw regions, which are represented by the following path parameters:  * `fr-par` * `nl-ams` * `pl-waw`  ## Technical limitations  The following limitations apply to Scaleway VPC:  - Up to 250 resources can be attached to a Private Network. - A resource can be attached to up to 8 Private Networks. - The following resource types can be attached to a Private Network:     - Instances     - Elastic Metal servers     - Apple silicon     - Managed Inference     - Load Balancers     - Public Gateways     - Managed Databases for PostgreSQL and MySQL     - Managed Databases for Redis (only at the time of resource creation)     - Kubernetes Kapsule (only at the time of resource creation) - The MAC address of an Instance in a Private Network cannot be changed. - Broadcast and multicast traffic, while supported, are heavily rate-limited.  ## Going further  For more help using Scaleway VPC and Private Networks, check out the following resources: - Our [main documentation](https://www.scaleway.com/en/docs/vpc/) - The #virtual-private-cloud channel on our [Slack Community](https://www.scaleway.com/en/docs/tutorials/scaleway-slack-community/) - Our [support ticketing system](https://www.scaleway.com/en/docs/account/how-to/open-a-support-ticket/).
+ *
+ * The version of the OpenAPI document: v2
+ *
+ *
+ * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
+ * https://openapi-generator.tech
+ * Do not edit the class manually.
+ */
+
+export interface ConfigurationParameters {
+  apiKey?:
+    | string
+    | Promise<string>
+    | ((name: string) => string)
+    | ((name: string) => Promise<string>);
+  username?: string;
+  password?: string;
+  accessToken?:
+    | string
+    | Promise<string>
+    | ((name?: string, scopes?: string[]) => string)
+    | ((name?: string, scopes?: string[]) => Promise<string>);
+  basePath?: string;
+  serverIndex?: number;
+  baseOptions?: any;
+  formDataCtor?: new () => any;
+}
+
+export class Configuration {
+  /**
+   * parameter for apiKey security
+   * @param name security name
+   * @memberof Configuration
+   */
+  apiKey?:
+    | string
+    | Promise<string>
+    | ((name: string) => string)
+    | ((name: string) => Promise<string>);
+  /**
+   * parameter for basic security
+   *
+   * @type {string}
+   * @memberof Configuration
+   */
+  username?: string;
+  /**
+   * parameter for basic security
+   *
+   * @type {string}
+   * @memberof Configuration
+   */
+  password?: string;
+  /**
+   * parameter for oauth2 security
+   * @param name security name
+   * @param scopes oauth2 scope
+   * @memberof Configuration
+   */
+  accessToken?:
+    | string
+    | Promise<string>
+    | ((name?: string, scopes?: string[]) => string)
+    | ((name?: string, scopes?: string[]) => Promise<string>);
+  /**
+   * override base path
+   *
+   * @type {string}
+   * @memberof Configuration
+   */
+  basePath?: string;
+  /**
+   * override server index
+   *
+   * @type {number}
+   * @memberof Configuration
+   */
+  serverIndex?: number;
+  /**
+   * base options for axios calls
+   *
+   * @type {any}
+   * @memberof Configuration
+   */
+  baseOptions?: any;
+  /**
+   * The FormData constructor that will be used to create multipart form data
+   * requests. You can inject this here so that execution environments that
+   * do not support the FormData class can still run the generated client.
+   *
+   * @type {new () => FormData}
+   */
+  formDataCtor?: new () => any;
+
+  constructor(param: ConfigurationParameters = {}) {
+    this.apiKey = param.apiKey;
+    this.username = param.username;
+    this.password = param.password;
+    this.accessToken = param.accessToken;
+    this.basePath = param.basePath;
+    this.serverIndex = param.serverIndex;
+    this.baseOptions = {
+      ...param.baseOptions,
+      headers: {
+        ...param.baseOptions?.headers,
+      },
+    };
+    this.formDataCtor = param.formDataCtor;
+  }
+
+  /**
+   * Check if the given MIME is a JSON MIME.
+   * JSON MIME examples:
+   *   application/json
+   *   application/json; charset=UTF8
+   *   APPLICATION/JSON
+   *   application/vnd.company+json
+   * @param mime - MIME (Multipurpose Internet Mail Extensions)
+   * @return True if the given MIME is JSON, false otherwise.
+   */
+  public isJsonMime(mime: string): boolean {
+    const jsonMime: RegExp = new RegExp(
+      '^(application\/json|[^;/ \t]+\/[^;/ \t]+[+]json)[ \t]*(;.*)?$',
+      'i',
+    );
+    return (
+      mime !== null &&
+      (jsonMime.test(mime) ||
+        mime.toLowerCase() === 'application/json-patch+json')
+    );
+  }
+}

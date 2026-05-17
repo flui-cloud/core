@@ -1,0 +1,7 @@
+export enum AuthzInstallStatus {
+  PENDING = 'PENDING',
+  INSTALLING = 'INSTALLING',
+  RUNNING = 'RUNNING',
+  FAILED = 'FAILED',
+  UNINSTALLED = 'UNINSTALLED',
+}

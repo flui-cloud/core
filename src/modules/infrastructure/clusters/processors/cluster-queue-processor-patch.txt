@@ -1,0 +1,32 @@
+# Patch for ClusterQueueProcessor
+
+Changes needed:
+1. Line 29: Remove import of FirewallAttachmentsService
+2. Line 46: Replace firewallAttachmentsService injection with clusterDeletionService
+3. Line 70-72: Change providerFirewallIds to providerFirewallId (single value)
+4. Line 365-378: Replace firewallAttachmentsService.deleteClusterAttachments() with clusterDeletionService.cleanupClusterFirewall()
+
+Add import:
+import { ClusterDeletionService } from '../services/cluster-deletion.service';
+
+In constructor, replace:
+    private firewallAttachmentsService: FirewallAttachmentsService,
+With:
+    private clusterDeletionService: ClusterDeletionService,
+
+In handleCreateCluster, replace lines 70-76:
+      const providerFirewallId =
+        (operation.metadata as CreateClusterOperationMetadata)
+          ?.providerFirewallId;
+
+      const providerFirewallIds = providerFirewallId ? [providerFirewallId] : [];
+
+In handleDeleteCluster, replace lines 365-378:
+        // Delete cluster firewall using new deletion service
+        this.logger.log(
+          `Deleting firewall for cluster ${clusterId}`,
+        );
+        await this.clusterDeletionService.cleanupClusterFirewall(
+          clusterId,
+          clusterToDelete.provider as CloudProvider,
+        );

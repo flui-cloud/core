@@ -1,0 +1,107 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: postgresql
+  name: PostgreSQL
+  description: >
+    Relational database used as a foundation building block for composed
+    catalog apps. Not installed directly — referenced as a dependency.
+  appKind: DATABASE
+  category: database
+  tags:
+    - database
+    - relational
+    - sql
+    - building-block
+  license: PostgreSQL
+  version: '16'
+  maintainedAt: '2026-04-19'
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/postgres.svg
+  links:
+    website: https://www.postgresql.org
+    docs: https://www.postgresql.org/docs/
+    source: https://github.com/postgres/postgres
+
+spec:
+  type: building-block
+
+  image:
+    registry: docker.io
+    repository: library/postgres
+    tag: '16-alpine'
+
+  ports:
+    - name: postgres
+      internal: 5432
+      expose: false
+      protocol: tcp
+
+  volumes:
+    - name: data
+      mountPath: /var/lib/postgresql/data
+      required: true
+      size: 10Gi
+
+  persistence:
+    scope: dedicated
+
+  env:
+    - name: POSTGRES_DB
+      value: '{{app.id}}'
+    - name: POSTGRES_USER
+      value: '{{app.id}}'
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        generate: secret
+        length: 32
+    - name: PGDATA
+      value: /var/lib/postgresql/data/pgdata
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: '2'
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 250m
+          max: '4'
+        memory:
+          min: 256Mi
+          max: 8Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+          - CPUThrottling
+        cooldown: 10m
+
+  healthcheck:
+    type: exec
+    command:
+      - pg_isready
+      - -U
+      - '{{env.POSTGRES_USER}}'
+    initialDelay: 10s
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+  auth:
+    mode: none
+
+  smokeTest:
+    type: script
+    timeoutSeconds: 20
+    inline: |
+      psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${SMOKE_APP_FQDN}:5432/${POSTGRES_DB}" \
+        -c "CREATE TABLE _smoke_test (id SERIAL PRIMARY KEY); DROP TABLE _smoke_test;"

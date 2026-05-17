@@ -1,0 +1,762 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { ApplicationEntity } from '../entities/application.entity';
+import { ApplicationResourceKind } from '../enums/application-resource-kind.enum';
+import {
+  DockerImageSourceConfig,
+  GitBuildSourceConfig,
+  ApplicationHealthProbe,
+  ApplicationVolume,
+  ApplicationHpaBehavior,
+} from '../interfaces/source-config.interface';
+import { getProjectPath } from '../../../common/utils/project-root.util';
+import { FrameworkType } from '../../frameworks/framework-core/enums/framework-type.enum';
+import { EncryptionService } from '../../shared/encryption/services/encryption.service';
+
+export interface GeneratedManifest {
+  kind: ApplicationResourceKind;
+  name: string;
+  apiVersion: string;
+  yaml: string;
+}
+
+@Injectable()
+export class ApplicationManifestGeneratorService {
+  private readonly logger = new Logger(
+    ApplicationManifestGeneratorService.name,
+  );
+
+  constructor(private readonly encryptionService: EncryptionService) {}
+
+  generateForDockerImage(
+    app: ApplicationEntity,
+    imagePullSecretName?: string,
+  ): GeneratedManifest[] {
+    const config = app.sourceConfig as DockerImageSourceConfig;
+    const manifests: GeneratedManifest[] = [];
+
+    // Apply order matters: dependencies (ConfigMap/Secret/PVC) must exist
+    // before the Deployment so that the scheduler doesn't fail the first
+    // placement attempt and enter exponential backoff.
+    if (app.env?.some((e) => !e.secret && !e.externalSecretRef)) {
+      manifests.push(this.generateConfigMap(app));
+    }
+
+    if (app.env?.some((e) => e.secret && !e.externalSecretRef)) {
+      manifests.push(this.generateSecret(app));
+    }
+
+    const isStatefulSet = app.workloadKind === 'StatefulSet';
+
+    if (app.volumes?.length && !isStatefulSet) {
+      for (const v of app.volumes) {
+        manifests.push(this.generatePvc(app, v));
+      }
+    }
+
+    if (app.port) {
+      manifests.push(this.generateService(app));
+      if (isStatefulSet) {
+        manifests.push(this.generateHeadlessService(app));
+      }
+    }
+
+    if (isStatefulSet) {
+      manifests.push(
+        this.generateStatefulSet(app, config, imagePullSecretName),
+      );
+    } else {
+      manifests.push(this.generateDeployment(app, config, imagePullSecretName));
+    }
+
+    if (app.scaling?.enabled && !isStatefulSet) {
+      manifests.push(this.generateHpa(app));
+    }
+
+    this.logger.log(
+      `generateForDockerImage(${app.slug}): ${manifests.length} manifests; volumes=${app.volumes?.length ?? 0} workload=${app.workloadKind ?? 'Deployment'} scaling.enabled=${app.scaling?.enabled ?? false}`,
+    );
+
+    return manifests;
+  }
+
+  private generateDeployment(
+    app: ApplicationEntity,
+    config: DockerImageSourceConfig,
+    imagePullSecretName?: string,
+  ): GeneratedManifest {
+    const imageRef = config.imageRef || app.imageRef;
+    const labels = this.buildLabels(app);
+    const annotations = this.buildAnnotations(app);
+
+    const cpuRequest = app.resources?.cpu?.request ?? '100m';
+    const cpuLimit = app.resources?.cpu?.limit ?? '500m';
+    const memRequest = app.resources?.memory?.request ?? '128Mi';
+    const memLimit = app.resources?.memory?.limit ?? '256Mi';
+
+    const template = this.loadTemplate('deployment.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{POD_LABELS_BLOCK}}', this.renderLabelsBlock(labels, 8))
+      .replaceAll('{{ANNOTATIONS_BLOCK}}', this.renderLabelsBlock(annotations))
+      .replaceAll('{{REPLICAS}}', String(app.replicas ?? 1))
+      .replaceAll('{{IMAGE}}', imageRef)
+      .replaceAll('{{PULL_POLICY}}', config.pullPolicy || 'IfNotPresent')
+      .replaceAll('{{PORT}}', String(app.port ?? 80))
+      .replaceAll('{{PORTS_BLOCK}}', this.renderPortsBlock(app.port))
+      .replaceAll('{{ENV_BLOCK}}', this.renderEnvBlock(app))
+      .replaceAll('{{CPU_REQUEST}}', cpuRequest)
+      .replaceAll('{{CPU_LIMIT}}', cpuLimit)
+      .replaceAll('{{MEMORY_REQUEST}}', memRequest)
+      .replaceAll('{{MEMORY_LIMIT}}', memLimit)
+      .replaceAll('{{CONFIG_HASH}}', this.computeConfigHash(app, config))
+      .replaceAll(
+        '{{READINESS_PROBE_BLOCK}}',
+        this.renderReadinessProbeBlock(app),
+      )
+      .replaceAll('{{VOLUME_MOUNTS_BLOCK}}', this.renderVolumeMountsBlock(app))
+      .replaceAll('{{VOLUMES_BLOCK}}', this.renderVolumesBlock(app))
+      .replaceAll(
+        '{{IMAGE_PULL_SECRETS_BLOCK}}',
+        this.renderImagePullSecretsBlock(imagePullSecretName),
+      )
+      .replaceAll(
+        '{{NODE_PLACEMENT_BLOCK}}',
+        this.renderNodePlacementBlock(app),
+      )
+      .replaceAll(
+        '{{COMMAND_OVERRIDE_BLOCK}}',
+        this.renderCommandBlock(this.getStartCommandOverride(app)),
+      );
+
+    return {
+      kind: ApplicationResourceKind.DEPLOYMENT,
+      name: app.slug,
+      apiVersion: 'apps/v1',
+      yaml,
+    };
+  }
+
+  private generateStatefulSet(
+    app: ApplicationEntity,
+    config: DockerImageSourceConfig,
+    imagePullSecretName?: string,
+  ): GeneratedManifest {
+    const imageRef = config.imageRef || app.imageRef;
+    const labels = this.buildLabels(app);
+    const annotations = this.buildAnnotations(app);
+
+    const cpuRequest = app.resources?.cpu?.request ?? '100m';
+    const cpuLimit = app.resources?.cpu?.limit ?? '500m';
+    const memRequest = app.resources?.memory?.request ?? '128Mi';
+    const memLimit = app.resources?.memory?.limit ?? '256Mi';
+
+    const template = this.loadTemplate('statefulset.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{POD_LABELS_BLOCK}}', this.renderLabelsBlock(labels, 8))
+      .replaceAll('{{ANNOTATIONS_BLOCK}}', this.renderLabelsBlock(annotations))
+      .replaceAll('{{REPLICAS}}', String(app.replicas ?? 1))
+      .replaceAll('{{IMAGE}}', imageRef)
+      .replaceAll('{{PULL_POLICY}}', config.pullPolicy || 'IfNotPresent')
+      .replaceAll('{{PORT}}', String(app.port ?? 80))
+      .replaceAll('{{PORTS_BLOCK}}', this.renderPortsBlock(app.port))
+      .replaceAll('{{ENV_BLOCK}}', this.renderEnvBlock(app))
+      .replaceAll('{{CPU_REQUEST}}', cpuRequest)
+      .replaceAll('{{CPU_LIMIT}}', cpuLimit)
+      .replaceAll('{{MEMORY_REQUEST}}', memRequest)
+      .replaceAll('{{MEMORY_LIMIT}}', memLimit)
+      .replaceAll('{{CONFIG_HASH}}', this.computeConfigHash(app, config))
+      .replaceAll(
+        '{{READINESS_PROBE_BLOCK}}',
+        this.renderReadinessProbeBlock(app),
+      )
+      .replaceAll('{{VOLUME_MOUNTS_BLOCK}}', this.renderVolumeMountsBlock(app))
+      .replaceAll(
+        '{{VOLUME_CLAIM_TEMPLATES_BLOCK}}',
+        this.renderVolumeClaimTemplatesBlock(app),
+      )
+      .replaceAll(
+        '{{IMAGE_PULL_SECRETS_BLOCK}}',
+        this.renderImagePullSecretsBlock(imagePullSecretName),
+      )
+      .replaceAll(
+        '{{NODE_PLACEMENT_BLOCK}}',
+        this.renderNodePlacementBlock(app),
+      )
+      .replaceAll(
+        '{{COMMAND_OVERRIDE_BLOCK}}',
+        this.renderCommandBlock(this.getStartCommandOverride(app)),
+      );
+
+    return {
+      kind: ApplicationResourceKind.STATEFUL_SET,
+      name: app.slug,
+      apiVersion: 'apps/v1',
+      yaml,
+    };
+  }
+
+  private generateService(app: ApplicationEntity): GeneratedManifest {
+    const labels = this.buildLabels(app);
+
+    const template = this.loadTemplate('service.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{PORT}}', String(app.port));
+
+    return {
+      kind: ApplicationResourceKind.SERVICE,
+      name: `${app.slug}-svc`,
+      apiVersion: 'v1',
+      yaml,
+    };
+  }
+
+  private generateHeadlessService(app: ApplicationEntity): GeneratedManifest {
+    const labels = this.buildLabels(app);
+
+    const template = this.loadTemplate('headless-service.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{PORT}}', String(app.port));
+
+    return {
+      kind: ApplicationResourceKind.SERVICE,
+      name: `${app.slug}-headless`,
+      apiVersion: 'v1',
+      yaml,
+    };
+  }
+
+  private generateConfigMap(app: ApplicationEntity): GeneratedManifest {
+    const labels = this.buildLabels(app);
+    const nonSecretEnv =
+      app.env?.filter((e) => !e.secret && !e.externalSecretRef) || [];
+
+    const template = this.loadTemplate('configmap.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll(
+        '{{CONFIG_DATA_BLOCK}}',
+        this.renderConfigDataBlock(nonSecretEnv),
+      );
+
+    return {
+      kind: ApplicationResourceKind.CONFIG_MAP,
+      name: `${app.slug}-config`,
+      apiVersion: 'v1',
+      yaml,
+    };
+  }
+
+  private generateSecret(app: ApplicationEntity): GeneratedManifest {
+    const labels = this.buildLabels(app);
+    const secretEnv =
+      app.env?.filter((e) => e.secret && !e.externalSecretRef) || [];
+
+    const template = this.loadTemplate('secret.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll(
+        '{{SECRET_DATA_BLOCK}}',
+        this.renderSecretDataBlock(secretEnv),
+      );
+
+    return {
+      kind: ApplicationResourceKind.SECRET,
+      name: `${app.slug}-secret`,
+      apiVersion: 'v1',
+      yaml,
+    };
+  }
+
+  private generateHpa(app: ApplicationEntity): GeneratedManifest {
+    const labels = this.buildLabels(app);
+
+    const minReplicas =
+      app.scaling?.horizontal?.min ?? app.scaling?.minReplicas ?? 1;
+    const maxReplicas =
+      app.scaling?.horizontal?.max ?? app.scaling?.maxReplicas ?? 5;
+
+    const template = this.loadTemplate('hpa.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{MIN_REPLICAS}}', String(minReplicas))
+      .replaceAll('{{MAX_REPLICAS}}', String(maxReplicas))
+      .replaceAll('{{METRICS_BLOCK}}', this.renderMetricsBlock(app))
+      .replaceAll(
+        '{{BEHAVIOR_BLOCK}}',
+        this.renderHpaBehaviorBlock(app.scaling?.horizontal?.behavior),
+      );
+
+    return {
+      kind: ApplicationResourceKind.HORIZONTAL_POD_AUTOSCALER,
+      name: `${app.slug}-hpa`,
+      apiVersion: 'autoscaling/v2',
+      yaml,
+    };
+  }
+
+  private generatePvc(
+    app: ApplicationEntity,
+    volume: ApplicationVolume,
+  ): GeneratedManifest {
+    const labels = this.buildLabels(app);
+    const size = volume.size ?? '1Gi';
+
+    const storageClassBlock = volume.storageClass
+      ? `  storageClassName: ${volume.storageClass}`
+      : '';
+
+    const template = this.loadTemplate('pvc.yaml');
+    const yaml = template
+      .replaceAll('{{SLUG}}', app.slug)
+      .replaceAll('{{VOLUME_NAME}}', volume.name)
+      .replaceAll('{{NAMESPACE}}', app.k8sNamespace)
+      .replaceAll('{{LABELS_BLOCK}}', this.renderLabelsBlock(labels))
+      .replaceAll('{{SIZE}}', size)
+      .replaceAll('{{STORAGE_CLASS_BLOCK}}', storageClassBlock);
+
+    return {
+      kind: ApplicationResourceKind.PERSISTENT_VOLUME_CLAIM,
+      name: `${app.slug}-${volume.name}`,
+      apiVersion: 'v1',
+      yaml,
+    };
+  }
+
+  // ─── Template loading ───────────────────────────────────────────────────────
+
+  private loadTemplate(filename: string): string {
+    const templatePath = getProjectPath(
+      'src',
+      'modules',
+      'applications',
+      'templates',
+      'k8s',
+      filename,
+    );
+    return readFileSync(templatePath, 'utf-8');
+  }
+
+  // ─── Block renderers ────────────────────────────────────────────────────────
+
+  private renderLabelsBlock(
+    labels: Record<string, string>,
+    indent = 4,
+  ): string {
+    return Object.entries(labels)
+      .map(([k, v]) => `${' '.repeat(indent)}${k}: "${v}"`)
+      .join('\n');
+  }
+
+  private renderImagePullSecretsBlock(secretName?: string): string {
+    if (!secretName) return '';
+    return `      imagePullSecrets:\n        - name: ${secretName}`;
+  }
+
+  private renderNodePlacementBlock(app: ApplicationEntity): string {
+    if (app.persistenceScope !== 'dedicated') return '';
+    if (app.dedicatedNodeName) {
+      return (
+        '      nodeSelector:\n' +
+        `        kubernetes.io/hostname: "${app.dedicatedNodeName}"`
+      );
+    }
+    return (
+      '      nodeSelector:\n' +
+      '        node-role.kubernetes.io/control-plane: "true"\n' +
+      '      tolerations:\n' +
+      '        - key: node-role.kubernetes.io/control-plane\n' +
+      '          operator: Exists\n' +
+      '          effect: NoSchedule\n' +
+      '        - key: node-role.kubernetes.io/master\n' +
+      '          operator: Exists\n' +
+      '          effect: NoSchedule'
+    );
+  }
+
+  /**
+   * Resolve the effective start command to override the image's baked CMD.
+   * Priority: user override → auto-detected (from build) → framework fallback → undefined (no override).
+   */
+  private getStartCommandOverride(app: ApplicationEntity): string | undefined {
+    // Priority 1: explicit user override
+    if (app.startCommand) return app.startCommand;
+
+    // Priority 2: auto-detected + corrected by build processor (already on app.startCommand above,
+    // or not yet set for apps built before this feature — fall through to framework fallback).
+
+    // Priority 3: framework-based fallback for images built before auto-detection was introduced
+    const framework = (app.sourceConfig as GitBuildSourceConfig)?.framework;
+    if (framework === FrameworkType.SPRING_BOOT) {
+      return 'java $JAVA_OPTS -Dserver.port=$PORT -jar $(ls /app/build/libs/*.jar /app/*/build/libs/*.jar 2>/dev/null | grep -v plain | head -1)';
+    }
+
+    return undefined; // no override — K8s uses the image's baked CMD
+  }
+
+  /** Render the command/args override block for the container spec. Empty string if no override. */
+  private renderCommandBlock(startCommand?: string): string {
+    if (!startCommand) return '';
+    const escaped = startCommand
+      .replaceAll(String.raw`\\`, String.raw`\\`)
+      .replaceAll('"', String.raw`\"`);
+    return (
+      '          command: ["/bin/sh", "-c"]\n' +
+      '          args:\n' +
+      `            - "${escaped}"`
+    );
+  }
+
+  private renderPortsBlock(port?: number): string {
+    if (!port) return '';
+    return (
+      '          ports:\n' +
+      `            - containerPort: ${port}\n` +
+      '              protocol: TCP'
+    );
+  }
+
+  private renderEnvBlock(app: ApplicationEntity): string {
+    if (!app.env?.length) return '';
+    const lines: string[] = ['          env:'];
+    for (const e of app.env) {
+      lines.push(`            - name: ${e.name}`, `              valueFrom:`);
+      if (e.externalSecretRef) {
+        lines.push(
+          `                secretKeyRef:`,
+          `                  name: ${e.externalSecretRef.secretName}`,
+          `                  key: ${e.externalSecretRef.key}`,
+        );
+      } else if (e.secret) {
+        lines.push(
+          `                secretKeyRef:`,
+          `                  name: ${app.slug}-secret`,
+          `                  key: ${e.name}`,
+        );
+      } else {
+        lines.push(
+          `                configMapKeyRef:`,
+          `                  name: ${app.slug}-config`,
+          `                  key: ${e.name}`,
+        );
+      }
+    }
+    return lines.join('\n');
+  }
+
+  private renderConfigDataBlock(
+    envVars: Array<{ name: string; value: string }>,
+  ): string {
+    return envVars
+      .map((e) => `  ${e.name}: ${JSON.stringify(e.value)}`)
+      .join('\n');
+  }
+
+  private renderSecretDataBlock(
+    envVars: Array<{ name: string; value: string }>,
+  ): string {
+    // `e.value` is AES-GCM encrypted at rest (ApplicationService.create wraps
+    // every secret=true env var via EncryptionService.encrypt). Before writing
+    // it to the Kubernetes Secret — which already does its own base64 encoding
+    // — we MUST decrypt back to plaintext. Otherwise the container receives
+    // the ciphertext as the env value and apps with strict validation
+    // (e.g. Homarr's 64-hex-char SECRET_ENCRYPTION_KEY) reject it with
+    // "Invalid environment variables". Apps that accept any opaque token
+    // (e.g. Vaultwarden's ADMIN_TOKEN) appear to "work" but the token the
+    // user sees in the Flui dashboard would not match what the app accepts.
+    return envVars
+      .map((e) => {
+        const plaintext = this.decryptIfEncrypted(e.value);
+        return `  ${e.name}: ${Buffer.from(plaintext).toString('base64')}`;
+      })
+      .join('\n');
+  }
+
+  /**
+   * Decrypt when the value looks like our AES-GCM envelope (iv+authTag+
+   * ciphertext, base64). On failure (e.g. a plaintext snuck in), log and
+   * fall back to the raw value — we'd rather ship a misconfigured secret
+   * the user can spot than crash the whole deploy.
+   */
+  private decryptIfEncrypted(value: string): string {
+    try {
+      return this.encryptionService.decrypt(value);
+    } catch (err) {
+      this.logger.warn(
+        `renderSecretDataBlock: failed to decrypt env value (${
+          err instanceof Error ? err.message : String(err)
+        }); using raw value. This usually means an env was marked secret=true but stored in plaintext.`,
+      );
+      return value;
+    }
+  }
+
+  private renderVolumeMountsBlock(app: ApplicationEntity): string {
+    if (!app.volumes?.length) return '';
+    const lines: string[] = ['          volumeMounts:'];
+    for (const v of app.volumes) {
+      lines.push(
+        `            - name: ${v.name}`,
+        `              mountPath: ${v.mountPath}`,
+      );
+    }
+    return lines.join('\n');
+  }
+
+  private renderVolumesBlock(app: ApplicationEntity): string {
+    if (!app.volumes?.length) return '';
+    const lines: string[] = ['      volumes:'];
+    for (const v of app.volumes) {
+      const claimName = v.claimNameOverride ?? `${app.slug}-${v.name}`;
+      lines.push(
+        `        - name: ${v.name}`,
+        `          persistentVolumeClaim:`,
+        `            claimName: ${claimName}`,
+      );
+    }
+    return lines.join('\n');
+  }
+
+  private renderVolumeClaimTemplatesBlock(app: ApplicationEntity): string {
+    if (!app.volumes?.length) return '';
+    const lines: string[] = ['  volumeClaimTemplates:'];
+    for (const v of app.volumes) {
+      const size = v.size ?? '1Gi';
+      lines.push(
+        `    - metadata:`,
+        `        name: ${v.name}`,
+        `      spec:`,
+        `        accessModes:`,
+        `          - ReadWriteOnce`,
+      );
+      if (v.storageClass) {
+        lines.push(`        storageClassName: ${v.storageClass}`);
+      }
+      lines.push(
+        `        resources:`,
+        `          requests:`,
+        `            storage: ${size}`,
+      );
+    }
+    return lines.join('\n');
+  }
+
+  private renderHpaBehaviorBlock(
+    behavior: ApplicationHpaBehavior | undefined,
+  ): string {
+    if (!behavior || (!behavior.scaleUp && !behavior.scaleDown)) return '';
+    const lines: string[] = ['  behavior:'];
+    if (behavior.scaleUp) {
+      lines.push(
+        '    scaleUp:',
+        `      stabilizationWindowSeconds: ${behavior.scaleUp.stabilizationWindowSeconds}`,
+        '      policies:',
+        '        - type: Pods',
+        `          value: ${behavior.scaleUp.step}`,
+        '          periodSeconds: 15',
+        '      selectPolicy: Max',
+      );
+    }
+    if (behavior.scaleDown) {
+      lines.push(
+        '    scaleDown:',
+        `      stabilizationWindowSeconds: ${behavior.scaleDown.stabilizationWindowSeconds}`,
+        '      policies:',
+        '        - type: Pods',
+        `          value: ${behavior.scaleDown.step}`,
+        '          periodSeconds: 60',
+        '      selectPolicy: Max',
+      );
+    }
+    return lines.join('\n');
+  }
+
+  private renderMetricsBlock(app: ApplicationEntity): string {
+    const lines: string[] = [];
+    const v2metrics = app.scaling?.horizontal?.metrics;
+    if (v2metrics?.length) {
+      for (const m of v2metrics) {
+        lines.push(
+          '    - type: Resource',
+          '      resource:',
+          `        name: ${m.type}`,
+          '        target:',
+          '          type: Utilization',
+          `          averageUtilization: ${m.utilization}`,
+        );
+      }
+      return lines.join('\n');
+    }
+    if (app.scaling?.targetCPU) {
+      lines.push(
+        '    - type: Resource',
+        '      resource:',
+        '        name: cpu',
+        '        target:',
+        '          type: Utilization',
+        `          averageUtilization: ${app.scaling.targetCPU}`,
+      );
+    }
+    if (app.scaling?.targetMemory) {
+      lines.push(
+        '    - type: Resource',
+        '      resource:',
+        '        name: memory',
+        '        target:',
+        '          type: Utilization',
+        `          averageUtilization: ${app.scaling.targetMemory}`,
+      );
+    }
+    return lines.join('\n');
+  }
+
+  // ─── Metadata builders ───────────────────────────────────────────────────────
+
+  private buildLabels(app: ApplicationEntity): Record<string, string> {
+    return {
+      app: app.slug,
+      'app.kubernetes.io/name': app.slug,
+      'app.kubernetes.io/managed-by': 'flui-cloud',
+      'app.kubernetes.io/instance': app.slug,
+      'flui-app-id': app.id,
+      'flui.cloud/app-kind': app.kind,
+      ...app.labels,
+    };
+  }
+
+  /**
+   * Returns the effective health probe for an app.
+   * If healthProbe is not explicitly configured, no probe is injected.
+   */
+  resolveDefaultProbe(app: ApplicationEntity): ApplicationHealthProbe {
+    return app.healthProbe ?? { type: 'none' };
+  }
+
+  /**
+   * Renders the readinessProbe YAML block for a container spec.
+   * Returns an empty string if the probe type is 'none' or cannot be determined.
+   */
+  private renderReadinessProbeBlock(app: ApplicationEntity): string {
+    const probe = this.resolveDefaultProbe(app);
+    if (probe.type === 'none') return '';
+
+    const initialDelay = probe.initialDelaySeconds ?? 30;
+    const period = probe.periodSeconds ?? 30;
+    const timeout = probe.timeoutSeconds ?? 5;
+    const failureThreshold = probe.failureThreshold ?? 3;
+    const indent = '          ';
+
+    const lines: string[] = [`${indent}readinessProbe:`];
+
+    if (probe.type === 'http') {
+      const path = probe.httpPath ?? '/';
+      const port = probe.httpPort ?? app.port ?? 80;
+      const scheme = probe.httpScheme ?? 'HTTP';
+      lines.push(
+        `${indent}  httpGet:`,
+        `${indent}    path: ${path}`,
+        `${indent}    port: ${port}`,
+        `${indent}    scheme: ${scheme}`,
+      );
+    } else if (probe.type === 'tcp') {
+      const port = probe.tcpPort ?? app.port ?? 80;
+      lines.push(`${indent}  tcpSocket:`, `${indent}    port: ${port}`);
+    } else if (probe.type === 'exec') {
+      const cmd = probe.execCommand ?? [];
+      lines.push(`${indent}  exec:`, `${indent}    command:`);
+      for (const part of cmd) {
+        // JSON.stringify gives a YAML-safe double-quoted string and escapes
+        // any inner quotes/backslashes — avoids the parser interpreting
+        // unquoted values like "{{env.X}}" as flow mappings.
+        lines.push(`${indent}      - ${JSON.stringify(String(part))}`);
+      }
+    }
+
+    lines.push(
+      `${indent}  initialDelaySeconds: ${initialDelay}`,
+      `${indent}  periodSeconds: ${period}`,
+      `${indent}  timeoutSeconds: ${timeout}`,
+      `${indent}  failureThreshold: ${failureThreshold}`,
+    );
+
+    return lines.join('\n');
+  }
+
+  private buildAnnotations(app: ApplicationEntity): Record<string, string> {
+    return {
+      'flui.cloud/revision': String(app.currentRevisionId ? 1 : 0),
+    };
+  }
+
+  /**
+   * Hash the pod-facing config so a rolling update is guaranteed whenever the
+   * env list, image, command, or resources change — even when JSON Merge
+   * Patch on K8s might otherwise skip a spec update (e.g. ConfigMap keys
+   * sparite da `data` non rimosse, oppure spec pod template considerate
+   * equivalenti). The hash lands in `spec.template.metadata.annotations`, so
+   * any change forces K8s to observe a pod-template diff and restart pods.
+   *
+   * Included in the hash:
+   *   - env (names + values + secret/externalSecretRef descriptors)
+   *   - imageRef + pullPolicy
+   *   - startCommand (container CMD override)
+   *   - resources (cpu/mem request/limit)
+   *   - volumes (names + mountPaths + sizes)
+   *
+   * NOT included: replicas (handled by Deployment spec directly), labels,
+   * annotations (we'd get infinite loops), port (contributes only to probe
+   * rendering which we already track via env+cmd).
+   */
+  private computeConfigHash(
+    app: ApplicationEntity,
+    config: DockerImageSourceConfig,
+  ): string {
+    const payload = {
+      env:
+        app.env?.map((e) => ({
+          name: e.name,
+          value: e.value,
+          secret: !!e.secret,
+          ext: e.externalSecretRef ?? null,
+        })) ?? [],
+      image: config.imageRef || app.imageRef || '',
+      pullPolicy: config.pullPolicy || 'IfNotPresent',
+      cmd: this.getStartCommandOverride(app) ?? null,
+      resources: {
+        cpuRequest: app.resources?.cpu?.request ?? null,
+        cpuLimit: app.resources?.cpu?.limit ?? null,
+        memRequest: app.resources?.memory?.request ?? null,
+        memLimit: app.resources?.memory?.limit ?? null,
+      },
+      volumes:
+        app.volumes?.map((v) => ({
+          name: v.name,
+          mountPath: v.mountPath,
+          size: v.size ?? null,
+          storageClass: v.storageClass ?? null,
+        })) ?? [],
+    };
+    return createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex')
+      .slice(0, 16);
+  }
+}

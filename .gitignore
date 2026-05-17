@@ -1,0 +1,100 @@
+# compiled output
+/dist
+/node_modules
+/build
+
+# CLI compiled output
+/cli/lib
+/cli/oclif.manifest.json
+
+# Compiled TypeScript files (build artifacts)
+*.js
+*.d.ts
+# Allow root-level config files
+!*.config.js
+!jest.config.js
+!/cli/jest.config.js
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+/catalog-smoke-results
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Private keys and secrets
+*.pem
+*.key
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.kubeconfig
+kubeconfig
+secrets.*.yaml
+secrets.*.yml
+
+# dotenv environment variable files
+.env
+.env.*
+.env-cloud
+!.env.example
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ngrok
+ngrok.yml
+.ngrok
+*.ngrok.log
+
+# AI assistants
+.claude
+.cursor/
+.aider*
+.continue/
+.windsurf/
+.github/copilot-*
+
+# SonarQube local scan artifacts
+.sonar/
+.scannerwork/
+
+# Internal documentation (reference only, not for public repo)
+internal-docs/

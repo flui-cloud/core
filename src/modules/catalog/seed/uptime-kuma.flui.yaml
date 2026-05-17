@@ -1,0 +1,110 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: uptime-kuma
+  name: Uptime Kuma
+  description: >
+    Self-hosted uptime monitoring with a polished dashboard, multi-channel
+    notifications (email, Telegram, Slack, webhooks) and status pages.
+    Monitor HTTP, TCP, DNS and Docker containers with zero vendor lock-in.
+  appKind: TOOL
+  category: monitoring
+  tags:
+    - monitoring
+    - uptime
+    - status-page
+    - notifications
+  license: MIT
+  version: "2"
+  maintainedAt: "2026-04-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/uptime-kuma.svg
+  links:
+    website: https://uptime.kuma.pet
+    docs: https://github.com/louislam/uptime-kuma/wiki
+    source: https://github.com/louislam/uptime-kuma
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Pingdom
+    - Better Uptime
+    - StatusCake
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: louislam/uptime-kuma
+    tag: "2"
+
+  ports:
+    - name: http
+      internal: 3001
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /app/data
+      required: true
+      size: 2Gi
+
+  env:
+    - name: TZ
+      value: "UTC"
+      userEditable: true
+      description: Server timezone (IANA format, e.g. Europe/Rome)
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3001
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 15
+    retries: 3

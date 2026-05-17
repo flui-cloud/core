@@ -1,0 +1,94 @@
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ResourceOverridesDto } from './resource-overrides.dto';
+import { DependencyChoiceDto } from './dependency-choice.dto';
+
+export class InstallFromYamlDto {
+  @ApiProperty({ description: 'Raw .flui.yaml content' })
+  @IsString()
+  yaml: string;
+
+  @ApiProperty({ description: 'Target cluster UUID' })
+  @IsUUID()
+  clusterId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Display name shown in the dashboard. Defaults to manifest metadata.name.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  displayName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom FQDN. Omit to let Flui auto-assign or skip endpoint.',
+  })
+  @IsOptional()
+  @IsString()
+  domain?: string;
+
+  @ApiPropertyOptional({
+    description: 'Skip endpoint provisioning at install time.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipEndpoint?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Explicit answers to valueFrom.userInput prompts keyed by env var name. When omitted and the manifest has userInput fields, the server auto-generates test-safe values (useful for smoke tests).',
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
+  @IsOptional()
+  @IsObject()
+  userInputs?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    description: 'Per-env overrides for entries flagged userEditable:true.',
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  })
+  @IsOptional()
+  @IsObject()
+  envOverrides?: Record<string, string>;
+
+  @ApiPropertyOptional({ type: ResourceOverridesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ResourceOverridesDto)
+  resourceOverrides?: ResourceOverridesDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Dependency resolution choices (DEDICATED vs REUSE_EXISTING). Required when the manifest declares dependencies.',
+    type: [DependencyChoiceDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DependencyChoiceDto)
+  dependencyChoices?: DependencyChoiceDto[];
+
+  @ApiPropertyOptional({
+    enum: ['public', 'internal'],
+    description:
+      'Exposure override (only effective when manifest is privatizable).',
+  })
+  @IsOptional()
+  @IsIn(['public', 'internal'])
+  exposure?: 'public' | 'internal';
+}

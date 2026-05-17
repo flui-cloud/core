@@ -1,0 +1,1152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://flui.cloud/schema/catalog-manifest/v1.json",
+  "title": "Flui Catalog App Manifest",
+  "type": "object",
+  "required": [
+    "kind",
+    "apiVersion",
+    "metadata",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "CatalogApp"
+    },
+    "apiVersion": {
+      "const": "flui/v1"
+    },
+    "metadata": {
+      "$ref": "#/definitions/metadata"
+    },
+    "spec": {
+      "$ref": "#/definitions/spec"
+    }
+  },
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "appKind",
+        "category",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string"
+        },
+        "appKind": {
+          "type": "string",
+          "enum": ["DATABASE", "APPLICATION", "TOOL", "SYSTEM"]
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "license": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "type": "string",
+          "format": "uri"
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "website": {
+              "type": "string",
+              "format": "uri"
+            },
+            "docs": {
+              "type": "string",
+              "format": "uri"
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        },
+        "ratings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "wow": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "utility": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "euFit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "community": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        },
+        "alternativeTo": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maintainedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "ISO date (YYYY-MM-DD) of the last time this manifest was reviewed or updated. Used by the dashboard to surface stale catalog entries."
+        },
+        "entrypointPath": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Path to append to the app's base URL when the dashboard renders the 'Open app' button. Default '/'. Use this for apps whose root does not serve a UI (e.g. PocketBase where '/' returns 404 and '/_/' is the admin UI, or Jupyter notebooks on '/lab')."
+        },
+        "clientFor": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "description": "Building-block slugs this app is a client/UI for. The dashboard surfaces the app under 'Compatible clients' on each listed BB's install page. Pairs with spec.linkedBuildingBlocks to describe how to wire env vars from each BB."
+        },
+        "clientDefaultFor": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "description": "Subset of clientFor. Building-block slugs for which this app is the recommended/default client. GET /catalog/:slug/clients exposes a per-target isDefault flag derived from this list."
+        },
+        "draft": {
+          "type": "boolean",
+          "description": "When true, the manifest is seeded but kept unpublished — it does not appear in GET /catalog and cannot be installed by end users. Use for work-in-progress entries kept in the repo."
+        }
+      }
+    },
+    "spec": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/specStandalone"
+        },
+        {
+          "$ref": "#/definitions/specBuildingBlock"
+        },
+        {
+          "$ref": "#/definitions/specComposed"
+        }
+      ]
+    },
+    "specStandalone": {
+      "type": "object",
+      "required": [
+        "type",
+        "image",
+        "ports",
+        "env",
+        "resources",
+        "scaling"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "standalone"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/port"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/volume"
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/envVar"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "scaling": {
+          "$ref": "#/definitions/scaling"
+        },
+        "healthcheck": {
+          "$ref": "#/definitions/healthcheck"
+        },
+        "exposure": {
+          "$ref": "#/definitions/exposure"
+        },
+        "privatizable": {
+          "type": "boolean",
+          "default": true
+        },
+        "domain": {
+          "$ref": "#/definitions/domain"
+        },
+        "auth": {
+          "$ref": "#/definitions/auth"
+        },
+        "startCommand": {
+          "type": "string"
+        },
+        "linkedBuildingBlocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/linkedBuildingBlock"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/dependency"
+          }
+        },
+        "smokeTest": {
+          "$ref": "#/definitions/smokeTest"
+        }
+      }
+    },
+    "specBuildingBlock": {
+      "type": "object",
+      "required": [
+        "type",
+        "image",
+        "ports",
+        "env",
+        "resources",
+        "scaling",
+        "healthcheck"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "building-block"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/port"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/volume"
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/envVar"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "scaling": {
+          "$ref": "#/definitions/scaling"
+        },
+        "healthcheck": {
+          "$ref": "#/definitions/healthcheck"
+        },
+        "auth": {
+          "$ref": "#/definitions/auth"
+        },
+        "startCommand": {
+          "type": "string"
+        },
+        "smokeTest": {
+          "$ref": "#/definitions/smokeTest"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/dependency"
+          }
+        }
+      }
+    },
+    "specComposed": {
+      "type": "object",
+      "required": [
+        "type",
+        "components"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "composed"
+        },
+        "scalingPolicy": {
+          "$ref": "#/definitions/scalingPolicy"
+        },
+        "networking": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "internal": {
+              "type": "string"
+            }
+          }
+        },
+        "domain": {
+          "$ref": "#/definitions/domain"
+        },
+        "auth": {
+          "$ref": "#/definitions/auth"
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/component"
+          }
+        },
+        "smokeTest": {
+          "$ref": "#/definitions/smokeTest"
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "name",
+        "image",
+        "env",
+        "resources",
+        "scaling"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/port"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/volume"
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/envVar"
+          }
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "scaling": {
+          "$ref": "#/definitions/scaling"
+        },
+        "healthcheck": {
+          "$ref": "#/definitions/healthcheck"
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "credentials": {
+          "type": "object",
+          "required": [
+            "type",
+            "secretRef"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "registry",
+                "git-token"
+              ]
+            },
+            "secretRef": {
+              "type": "string"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "type",
+            "url",
+            "branch"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "git"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "dockerfile": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "port": {
+      "type": "object",
+      "required": [
+        "name",
+        "internal",
+        "expose"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "internal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "expose": {
+          "type": "boolean"
+        },
+        "protocol": {
+          "enum": [
+            "http",
+            "tcp"
+          ]
+        }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "required": [
+        "name",
+        "mountPath"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "mountPath": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "string"
+        }
+      }
+    },
+    "envVar": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "value": {
+          "type": "string"
+        },
+        "valueFrom": {
+          "$ref": "#/definitions/valueFrom"
+        },
+        "userEditable": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "value"
+          ],
+          "not": {
+            "required": [
+              "valueFrom"
+            ]
+          }
+        },
+        {
+          "required": [
+            "valueFrom"
+          ],
+          "not": {
+            "required": [
+              "value"
+            ]
+          }
+        }
+      ]
+    },
+    "valueFrom": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "generate",
+            "length"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "generate": {
+              "const": "secret"
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 256
+            },
+            "format": {
+              "enum": [
+                "base64url",
+                "hex"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "secretRef"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "secretRef": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "userInput"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "userInput": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "default": {
+                  "type": "string"
+                },
+                "sensitive": {
+                  "type": "boolean"
+                },
+                "placeholder": {
+                  "type": "string"
+                },
+                "pattern": {
+                  "type": "string",
+                  "format": "regex"
+                },
+                "patternDescription": {
+                  "type": "string"
+                },
+                "minLength": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1024
+                },
+                "maxLength": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "confirm": {
+                  "type": "boolean"
+                },
+                "format": {
+                  "enum": [
+                    "email",
+                    "url",
+                    "password",
+                    "text"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "$ref": "#/definitions/resourceSpec"
+        },
+        "limits": {
+          "$ref": "#/definitions/resourceSpec"
+        }
+      }
+    },
+    "resourceSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        }
+      }
+    },
+    "scaling": {
+      "type": "object",
+      "required": [
+        "horizontal",
+        "vertical"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "horizontal": {
+          "type": "object",
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "metrics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "target"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "cpu",
+                      "memory",
+                      "custom"
+                    ]
+                  },
+                  "target": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "utilization",
+                          "averageValue"
+                        ]
+                      },
+                      "value": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "behavior": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scaleUp": {
+                  "$ref": "#/definitions/hpaBehaviorPolicy"
+                },
+                "scaleDown": {
+                  "$ref": "#/definitions/hpaBehaviorPolicy"
+                }
+              }
+            }
+          }
+        },
+        "vertical": {
+          "type": "object",
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "mode": {
+              "enum": [
+                "Off",
+                "Initial",
+                "Recreate",
+                "Auto"
+              ]
+            },
+            "bounds": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "$ref": "#/definitions/vpaRange"
+                },
+                "memory": {
+                  "$ref": "#/definitions/vpaRange"
+                }
+              }
+            },
+            "updatePolicy": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "trigger": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "OOMKilled",
+                      "CPUThrottling"
+                    ]
+                  }
+                },
+                "cooldown": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "hpaBehaviorPolicy": {
+      "type": "object",
+      "required": [
+        "stabilizationWindow",
+        "step"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stabilizationWindow": {
+          "type": "string"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "vpaRange": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "type": "string"
+        },
+        "max": {
+          "type": "string"
+        }
+      }
+    },
+    "scalingPolicy": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "conservative",
+            "balanced",
+            "aggressive"
+          ]
+        },
+        "notifications": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "onScaleUp": {
+              "type": "boolean"
+            },
+            "onOOMKill": {
+              "type": "boolean"
+            },
+            "onScaleDown": {
+              "type": "boolean"
+            },
+            "onVerticalResize": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "healthcheck": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "http",
+            "tcp",
+            "exec"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initialDelay": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "exposure": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal"
+      ],
+      "default": "public",
+      "description": "Controls how the app is reached. 'public' (default) generates Ingress + Certificate + DNS on a public hostname. 'internal' skips all public exposure: only Deployment + Service ClusterIP are created; the app is reachable only from the Flui dashboard via the ForwardAuth proxy on a wildcard internal hostname."
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto": {
+          "type": "boolean"
+        },
+        "userCustomizable": {
+          "type": "boolean"
+        },
+        "tls": {
+          "type": "boolean"
+        }
+      }
+    },
+    "linkedBuildingBlock": {
+      "type": "object",
+      "required": [
+        "ref",
+        "envMapping"
+      ],
+      "additionalProperties": false,
+      "description": "Declares this standalone app is a client/UI for a building block (e.g. pgweb \u2192 postgresql). At runtime, the user connects the client to a running BB install via POST /catalog/installs/:id/connect with body { targetInstallId }. The backend wires the env vars below with `secretKeyRef` to the BB's existing K8s Secret (passwords never leave the cluster) and literal values for non-secret sources (host, port, db name). Connection is mutable: the same client can be disconnected or switched to another BB without reinstalling.",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "description": "Catalog slug of the target building block."
+        },
+        "envMapping": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/linkedEnv"
+          }
+        }
+      }
+    },
+    "linkedEnv": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "fromService": {
+          "enum": [
+            "host",
+            "port"
+          ],
+          "description": "Compute from the BB's Kubernetes Service: 'host' \u2192 cluster DNS, 'port' \u2192 first port's internal number."
+        },
+        "fromBBEnv": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Name of an env var declared on the BB. If it is a secret (generate/userInput sensitive) the client receives it via secretKeyRef to the BB's K8s Secret; if plain, the literal value is copied."
+        },
+        "value": {
+          "type": "string",
+          "description": "Literal value emitted as a plain env entry. Used when the env is BB-specific but not derivable from the BB itself (e.g. DbGate ENGINE_xxx=mariadb@dbgate-plugin-mysql)."
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["fromService"],
+          "not": { "anyOf": [{ "required": ["fromBBEnv"] }, { "required": ["value"] }] }
+        },
+        {
+          "required": ["fromBBEnv"],
+          "not": { "anyOf": [{ "required": ["fromService"] }, { "required": ["value"] }] }
+        },
+        {
+          "required": ["value"],
+          "not": { "anyOf": [{ "required": ["fromService"] }, { "required": ["fromBBEnv"] }] }
+        }
+      ]
+    },
+    "dependency": {
+      "type": "object",
+      "required": [
+        "ref",
+        "as"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "reuseExisting": {
+          "type": "boolean"
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "oidc",
+            "proxy",
+            "native",
+            "none"
+          ]
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "redirectPath": {
+              "type": "string"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "envMapping": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "issuerUrl": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                },
+                "enabledFlag": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "headerMapping": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "smokeTest": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "http",
+            "tcp",
+            "script",
+            "skip"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "expectedStatus": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "inline": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "shell": {
+          "type": "string"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

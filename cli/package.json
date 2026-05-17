@@ -1,0 +1,125 @@
+{
+  "name": "@flui-cloud/cli",
+  "version": "0.0.1",
+  "description": "Command-line interface for Flui — the open-source platform to deploy applications across cloud providers and your own servers.",
+  "author": "Flui <hello@flui.cloud>",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://docs.flui.cloud/cli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flui-cloud/core.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/flui-cloud/core/issues"
+  },
+  "keywords": [
+    "flui",
+    "flui-yaml",
+    "cli",
+    "paas",
+    "self-hosted",
+    "open-source",
+    "multi-cloud",
+    "hetzner",
+    "scaleway"
+  ],
+  "main": "lib/index.js",
+  "bin": {
+    "flui": "./bin/run"
+  },
+  "scripts": {
+    "prebuild": "node -e \"const fs=require('fs');const path=require('path');const copyDir=(src,dest)=>{if(!fs.existsSync(src)){console.log(src+' does not exist, skipping');return}if(fs.existsSync(dest)){fs.rmSync(dest,{recursive:true})}fs.mkdirSync(path.dirname(dest),{recursive:true});fs.cpSync(src,dest,{recursive:true});console.log(src+' copied to '+dest)};copyDir('templates','lib/templates');copyDir('src/modules/instances/assets/scripts','lib/src/modules/instances/assets/scripts')\"",
+    "build": "tsc && tsc-alias",
+    "postbuild": "pnpm link --global",
+    "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+    "postpack": "rm -f oclif.manifest.json",
+    "prepack": "npm run build && oclif manifest"
+  },
+  "dependencies": {
+    "@flui-cloud/spec": "^0.1.0",
+    "@nestjs/bull": "^11.0.4",
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@oclif/core": "^3.0.0",
+    "@oclif/plugin-warn-if-update-available": "^3.0.0",
+    "axios": "^1.6.0",
+    "bull": "^4.16.5",
+    "chalk": "^5.0.0",
+    "fs-extra": "^11.3.4",
+    "handlebars": "^4.7.8",
+    "module-alias": "^2.2.3",
+    "ora": "^7.0.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "oclif": "^4.23.7",
+    "ts-node": "^10.0.0",
+    "tsc-alias": "^1.8.16",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "oclif": {
+    "bin": "flui",
+    "dirname": "flui",
+    "commands": "./lib/cli/src/commands",
+    "topicSeparator": " ",
+    "plugins": [
+      "@oclif/plugin-warn-if-update-available"
+    ],
+    "warn-if-update-available": {
+      "timeoutInDays": 1,
+      "message": "<%- config.name %> update available: <%- chalk.greenBright(config.version) %> → <%- chalk.greenBright(latest) %>. Run \"npm install -g <%- config.name %>\" to update."
+    },
+    "hooks": {
+      "command_not_found": "./lib/cli/src/hooks/command_not_found"
+    },
+    "topics": {
+      "auth": {
+        "description": "Authentication management"
+      },
+      "config": {
+        "description": "Configuration: provider tokens (encrypted) and user preferences (plain text)"
+      },
+      "context": {
+        "description": "Profile and workspace management"
+      },
+      "dev": {
+        "description": "Local development helpers (tunnel, secret export to .env.local)"
+      },
+      "env": {
+        "description": "Cluster environment lifecycle management"
+      },
+      "firewall": {
+        "description": "Firewall rules and configuration"
+      },
+      "server-types": {
+        "description": "Cloud provider server type information"
+      },
+      "vnet": {
+        "description": "Virtual network management"
+      }
+    }
+  },
+  "files": [
+    "/bin",
+    "/lib",
+    "/oclif.manifest.json",
+    "/LICENSE",
+    "/README.md"
+  ],
+  "_moduleAliases": {
+    "src": "../src"
+  }
+}

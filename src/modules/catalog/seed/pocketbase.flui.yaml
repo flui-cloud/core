@@ -1,0 +1,124 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: pocketbase
+  name: PocketBase
+  description: >
+    Open-source backend in a single binary: SQLite database, authentication,
+    file storage, realtime subscriptions and an admin UI. Great for SaaS,
+    MVPs and mobile apps without spinning up a full stack.
+  appKind: APPLICATION
+  category: backend-as-a-service
+  tags:
+    - baas
+    - database
+    - authentication
+    - realtime
+    - sqlite
+  license: MIT
+  version: '0.35'
+  maintainedAt: '2026-04-19'
+  # PocketBase is backend-only; root "/" returns 404. Users reach the admin UI
+  # via "/_/". Dashboard "Open app" link must point there, not to the bare root.
+  entrypointPath: '/_/'
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/pocketbase.svg
+  links:
+    website: https://pocketbase.io
+    docs: https://pocketbase.io/docs
+    source: https://github.com/pocketbase/pocketbase
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Firebase
+    - Supabase
+    - Appwrite
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: muchobien/pocketbase
+    tag: '0.35'
+
+  ports:
+    - name: http
+      internal: 8090
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /pb_data
+      required: true
+      size: 5Gi
+
+  persistence:
+    scope: dedicated
+
+  env:
+    - name: PB_ADMIN_EMAIL
+      valueFrom:
+        userInput:
+          label: Admin email
+          format: email
+      description: Email of the initial superuser. Created on first boot and upserted on every restart by the image entrypoint.
+    - name: PB_ADMIN_PASSWORD
+      valueFrom:
+        userInput:
+          label: Admin password
+          sensitive: true
+          format: password
+          confirm: true
+          minLength: 10
+          maxLength: 72
+          pattern: '^.{10,72}$'
+          patternDescription: At least 10 characters
+      description: Password for the initial superuser. Flui does not store or log this value; if you lose it, reinstall or run `pocketbase superuser upsert` via a shell into the pod.
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 50m
+          max: '1'
+        memory:
+          min: 64Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /api/health
+    port: 8090
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  auth:
+    mode: native

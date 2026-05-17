@@ -1,0 +1,345 @@
+import {
+  BadGatewayException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  NotImplementedException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import * as crypto from 'node:crypto';
+import { IdentityRole, UserEntity } from '../../auth/entities/user.entity';
+import {
+  CreateIdentityUserInput,
+  CreatedIdentityUser,
+  IIdentityDirectory,
+  IdentityUser,
+  ListIdentityUsersQuery,
+} from '../../auth/interfaces/identity-directory.interface';
+import {
+  ClusterEntity,
+  ClusterType,
+} from '../../infrastructure/clusters/entities/cluster.entity';
+import { OidcProviderAdminClient } from './oidc-provider-admin.service';
+import { buildSystemNipHostname } from '../../dns/utils/nip-hostname.util';
+
+const FLUI_PROJECT_NAME = 'Flui';
+const FLUI_ADMIN_USERNAME_PREFIX = 'flui-admin';
+
+@Injectable()
+export class OidcIdentityDirectory implements IIdentityDirectory {
+  private readonly logger = new Logger(OidcIdentityDirectory.name);
+  private cachedProjectId: string | null = null;
+
+  constructor(
+    private readonly oidcProvider: OidcProviderAdminClient,
+    @InjectRepository(ClusterEntity)
+    private readonly clusterRepo: Repository<ClusterEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
+  ) {}
+
+  async createUser(
+    input: CreateIdentityUserInput,
+  ): Promise<CreatedIdentityUser> {
+    const { pat, hostHeader } = await this.connection();
+    const projectId = await this.resolveProjectId(pat, hostHeader);
+    const role = input.role ?? IdentityRole.USER;
+
+    const tempPassword = input.sendInvite
+      ? undefined
+      : (input.tempPassword ?? this.generatePassword());
+
+    let created;
+    try {
+      created = await this.oidcProvider.createHumanUser(pat, hostHeader, {
+        userName: input.email,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        initialPassword: tempPassword,
+        passwordChangeRequired: !input.sendInvite,
+        isEmailVerified: !input.sendInvite,
+      });
+    } catch (err) {
+      throw this.translateProviderError(err, 'createUser');
+    }
+
+    if (input.sendInvite) {
+      try {
+        await this.oidcProvider.resendUserInitialization(
+          pat,
+          hostHeader,
+          created.id,
+          input.email,
+        );
+      } catch (err) {
+        throw this.translateProviderError(err, 'sendInvite');
+      }
+    }
+
+    await this.applyRole(pat, hostHeader, projectId, created.id, role);
+
+    return {
+      id: created.id,
+      email: input.email,
+      role,
+      tempPassword,
+    };
+  }
+
+  async listUsers(query?: ListIdentityUsersQuery): Promise<IdentityUser[]> {
+    const { pat, hostHeader } = await this.connection();
+    const projectId = await this.resolveProjectId(pat, hostHeader);
+    const users = await this.oidcProvider.listUsers(pat, hostHeader, query);
+    const localBySub = new Map<string, UserEntity>();
+    if (users.length > 0) {
+      const rows = await this.userRepo
+        .createQueryBuilder('u')
+        .where('u.oidcSub IN (:...ids)', { ids: users.map((u) => u.id) })
+        .getMany();
+      for (const r of rows) if (r.oidcSub) localBySub.set(r.oidcSub, r);
+    }
+
+    const enriched: IdentityUser[] = [];
+    for (const u of users) {
+      const grants = await this.oidcProvider.listUserGrants(
+        pat,
+        hostHeader,
+        u.id,
+      );
+      const fluiGrant = grants.find((g) => g.projectId === projectId);
+      const role = this.deriveRole(
+        fluiGrant?.roleKeys,
+        localBySub.get(u.id)?.role,
+      );
+      enriched.push({
+        id: u.id,
+        email: u.email ?? u.userName,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role,
+        state: u.state,
+        isBootstrapAdmin: this.isBootstrapAdminEmail(u.email ?? u.userName),
+        isSystemUser:
+          u.userName?.startsWith(FLUI_ADMIN_USERNAME_PREFIX) ?? false,
+      });
+    }
+    return enriched;
+  }
+
+  async getUser(id: string): Promise<IdentityUser | null> {
+    const { pat, hostHeader } = await this.connection();
+    const projectId = await this.resolveProjectId(pat, hostHeader);
+    const u = await this.oidcProvider.getUser(pat, hostHeader, id);
+    if (!u) return null;
+    const grants = await this.oidcProvider.listUserGrants(pat, hostHeader, id);
+    const fluiGrant = grants.find((g) => g.projectId === projectId);
+    const local = await this.userRepo.findOne({ where: { oidcSub: id } });
+    return {
+      id: u.id,
+      email: u.email ?? u.userName,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      role: this.deriveRole(fluiGrant?.roleKeys, local?.role),
+      state: u.state,
+      isBootstrapAdmin: this.isBootstrapAdminEmail(u.email ?? u.userName),
+      isSystemUser: u.userName?.startsWith(FLUI_ADMIN_USERNAME_PREFIX) ?? false,
+    };
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const { pat, hostHeader } = await this.connection();
+    const u = await this.oidcProvider.getUser(pat, hostHeader, id);
+    if (!u) throw new NotFoundException(`User ${id} not found`);
+    if (u.userName?.startsWith(FLUI_ADMIN_USERNAME_PREFIX)) {
+      throw new ConflictException(
+        'Cannot delete the system admin user provisioned by the OIDC provider',
+      );
+    }
+    if (this.isBootstrapAdminEmail(u.email ?? u.userName)) {
+      throw new ConflictException('Cannot delete the bootstrap admin user');
+    }
+    try {
+      await this.oidcProvider.deleteUser(pat, hostHeader, id);
+    } catch (err) {
+      throw this.translateProviderError(err, 'deleteUser');
+    }
+    await this.userRepo.delete({ oidcSub: id });
+  }
+
+  async setRole(id: string, role: IdentityRole): Promise<void> {
+    const { pat, hostHeader } = await this.connection();
+    const projectId = await this.resolveProjectId(pat, hostHeader);
+    const u = await this.oidcProvider.getUser(pat, hostHeader, id);
+    if (!u) throw new NotFoundException(`User ${id} not found`);
+    await this.applyRole(pat, hostHeader, projectId, id, role);
+
+    const local = await this.userRepo.findOne({ where: { oidcSub: id } });
+    if (local) {
+      local.role = role;
+      local.isAdmin = role === IdentityRole.ADMIN;
+      await this.userRepo.save(local);
+    }
+  }
+
+  async resetPassword(
+    id: string,
+    sendInvite: boolean,
+  ): Promise<{ tempPassword?: string }> {
+    const { pat, hostHeader } = await this.connection();
+    const u = await this.oidcProvider.getUser(pat, hostHeader, id);
+    if (!u) throw new NotFoundException(`User ${id} not found`);
+    if (sendInvite) {
+      try {
+        await this.oidcProvider.resendUserInitialization(
+          pat,
+          hostHeader,
+          id,
+          u.email ?? u.userName,
+        );
+      } catch (err) {
+        throw this.translateProviderError(err, 'sendInvite');
+      }
+      return {};
+    }
+    const tempPassword = this.generatePassword();
+    try {
+      await this.oidcProvider.setUserPassword(
+        pat,
+        hostHeader,
+        id,
+        tempPassword,
+        true,
+      );
+    } catch (err) {
+      throw this.translateProviderError(err, 'resetPassword');
+    }
+    return { tempPassword };
+  }
+
+  private async applyRole(
+    pat: string,
+    hostHeader: string,
+    projectId: string,
+    userId: string,
+    role: IdentityRole,
+  ): Promise<void> {
+    const grants = await this.oidcProvider.listUserGrants(
+      pat,
+      hostHeader,
+      userId,
+    );
+    const fluiGrant = grants.find((g) => g.projectId === projectId);
+    if (fluiGrant?.roleKeys.length === 1 && fluiGrant.roleKeys[0] === role) {
+      return;
+    }
+    if (fluiGrant) {
+      await this.oidcProvider.revokeUserGrant(
+        pat,
+        hostHeader,
+        userId,
+        fluiGrant.grantId,
+      );
+    }
+    await this.oidcProvider.grantUserRole(pat, hostHeader, userId, projectId, [
+      role,
+    ]);
+  }
+
+  private deriveRole(
+    roleKeys: string[] | undefined,
+    fallback: IdentityRole | undefined,
+  ): IdentityRole {
+    if (!roleKeys || roleKeys.length === 0) {
+      return fallback ?? IdentityRole.USER;
+    }
+    const order: IdentityRole[] = [
+      IdentityRole.ADMIN,
+      IdentityRole.USER,
+      IdentityRole.READONLY,
+    ];
+    for (const r of order) if (roleKeys.includes(r)) return r;
+    return IdentityRole.USER;
+  }
+
+  private async resolveProjectId(
+    pat: string,
+    hostHeader: string,
+  ): Promise<string> {
+    if (this.cachedProjectId) return this.cachedProjectId;
+    const project = await this.oidcProvider.findProjectByName(
+      pat,
+      hostHeader,
+      FLUI_PROJECT_NAME,
+    );
+    if (!project) {
+      throw new InternalServerErrorException(
+        'Flui project is not provisioned on the OIDC provider — bootstrap may be incomplete',
+      );
+    }
+    this.cachedProjectId = project.id;
+    return project.id;
+  }
+
+  private async connection(): Promise<{ pat: string; hostHeader: string }> {
+    const pat = process.env.ZITADEL_SERVICE_ACCOUNT_PAT;
+    if (!pat) {
+      throw new NotImplementedException(
+        'OIDC provider PAT not available — bootstrap may not have completed',
+      );
+    }
+    const cluster = await this.clusterRepo.findOne({
+      where: { clusterType: ClusterType.OBSERVABILITY },
+    });
+    if (!cluster?.masterIpAddress) {
+      throw new InternalServerErrorException(
+        'Observability cluster master IP unknown — cannot reach OIDC provider',
+      );
+    }
+    return {
+      pat,
+      hostHeader: buildSystemNipHostname(
+        'auth',
+        cluster.masterIpAddress,
+        cluster.nipHostnameToken,
+      ),
+    };
+  }
+
+  private isBootstrapAdminEmail(email?: string): boolean {
+    if (!email) return false;
+    const expected = process.env.ADMIN_EMAIL || 'admin@flui.cloud';
+    return email.toLowerCase() === expected.toLowerCase();
+  }
+
+  private generatePassword(): string {
+    const charset =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*';
+    const bytes = crypto.randomBytes(16);
+    let out = '';
+    for (let i = 0; i < 16; i++) out += charset[bytes[i] % charset.length];
+    return out;
+  }
+
+  private translateProviderError(err: unknown, op: string): Error {
+    const status = (err as { response?: { status?: number } }).response?.status;
+    const data = (err as { response?: { data?: any } }).response?.data;
+    const code = data?.code;
+    const message = data?.message ?? (err as Error).message ?? 'unknown error';
+    if (status === 409 || code === 6 || /already exists/i.test(message)) {
+      return new ConflictException(message);
+    }
+    if (/smtp|email .* not configured|notification/i.test(message)) {
+      return new BadGatewayException({
+        code: 'INVITE_TRANSPORT_NOT_CONFIGURED',
+        message:
+          'OIDC provider could not send the invite email — configure SMTP on the provider',
+      });
+    }
+    this.logger.error(`OIDC ${op} failed: ${message}`);
+    return new InternalServerErrorException(`OIDC ${op} failed: ${message}`);
+  }
+}

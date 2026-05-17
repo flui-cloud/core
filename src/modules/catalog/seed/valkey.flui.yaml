@@ -1,0 +1,104 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: valkey
+  name: Valkey
+  description: >
+    Community Linux Foundation fork of Redis (BSD 3-Clause). In-memory
+    key-value store used as a cache/queue building block for composed
+    catalog apps. Not installed directly — referenced as a dependency.
+  appKind: DATABASE
+  category: cache
+  tags:
+    - cache
+    - key-value
+    - queue
+    - building-block
+    - redis-compatible
+  license: BSD-3-Clause
+  version: '7'
+  maintainedAt: '2026-04-19'
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/valkey.svg
+  links:
+    website: https://valkey.io
+    docs: https://valkey.io/topics/
+    source: https://github.com/valkey-io/valkey
+
+spec:
+  type: building-block
+
+  image:
+    registry: docker.io
+    repository: valkey/valkey
+    tag: '7-alpine'
+
+  ports:
+    - name: valkey
+      internal: 6379
+      expose: false
+      protocol: tcp
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 2Gi
+
+  persistence:
+    scope: dedicated
+
+  env:
+    - name: VALKEY_PASSWORD
+      valueFrom:
+        generate: secret
+        length: 32
+    - name: REDISCLI_AUTH
+      value: '{{env.VALKEY_PASSWORD}}'
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: '1'
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: '2'
+        memory:
+          min: 64Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+          - CPUThrottling
+        cooldown: 10m
+
+  healthcheck:
+    type: exec
+    command:
+      - redis-cli
+      - ping
+    initialDelay: 5s
+    interval: 10s
+    timeout: 3s
+    retries: 5
+
+  auth:
+    mode: none
+
+  smokeTest:
+    type: script
+    timeoutSeconds: 10
+    inline: |
+      redis-cli -h "$SMOKE_APP_FQDN" -p 6379 -a "$VALKEY_PASSWORD" SET _smoke ok
+      redis-cli -h "$SMOKE_APP_FQDN" -p 6379 -a "$VALKEY_PASSWORD" DEL _smoke

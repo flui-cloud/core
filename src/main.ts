@@ -1,0 +1,180 @@
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import * as dotenv from 'dotenv';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ValidationPipe, Logger, ConsoleLogger } from '@nestjs/common';
+import { HttpExceptionFilter } from './filters/http-exception.filter';
+import Redis from 'ioredis';
+
+dotenv.config();
+
+async function performPreBootstrapChecks(): Promise<void> {
+  const logger = new Logger('PreBootstrap');
+  const skipChecks = process.env.SKIP_STARTUP_CHECKS === 'true';
+
+  if (skipChecks) {
+    logger.warn('⚠️  Pre-bootstrap health checks are DISABLED');
+    return;
+  }
+
+  const deploymentMode = (process.env.DEPLOYMENT_MODE || 'local').toLowerCase();
+  logger.log(`🔍 Running pre-bootstrap checks (mode: ${deploymentMode})`);
+
+  // Check Redis connection before Bull tries to connect
+  const redisHost = process.env.REDIS_HOST || 'localhost';
+  const redisPort = Number.parseInt(process.env.REDIS_PORT || '6379', 10);
+  const redisPassword = process.env.REDIS_PASSWORD;
+
+  const redis = new Redis({
+    host: redisHost,
+    port: redisPort,
+    password: redisPassword,
+    connectTimeout: 5000,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+    lazyConnect: true,
+  });
+
+  try {
+    await redis.connect();
+    await redis.ping();
+    await redis.quit();
+    logger.log('✅ Redis connection successful');
+  } catch (error) {
+    redis.disconnect();
+
+    const errorMessage = [
+      '',
+      '━'.repeat(70),
+      '  🚨 STARTUP FAILED: Redis Connection Failed',
+      '━'.repeat(70),
+      '',
+      `   Host: ${redisHost}:${redisPort}`,
+      `   Error: ${error.code || error.message}`,
+      '',
+      '━'.repeat(70),
+      '',
+    ].join('\n');
+
+    logger.error(errorMessage);
+    process.exit(1);
+  }
+}
+
+/**
+ * Walks the OpenAPI document and copies any `x-enumNames` extension (preserved
+ * by @nestjs/swagger) onto a sibling `x-enum-varnames` extension. OpenAPI
+ * Generator's TypeScript templates use `x-enum-varnames` to derive identifier
+ * names for enum members — without it, enum values containing characters that
+ * aren't valid in JS identifiers (e.g. `${...}`, `#{...}#`) produce broken,
+ * uncompilable client code on the consumer side.
+ *
+ * To opt a DTO field into stable codegen names, declare `x-enumNames` next to
+ * `enum` in its `@ApiProperty()` decorator — the array order must match the
+ * `enum` declaration order.
+ */
+function addEnumVarnamesExtension<T>(document: T): T {
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (
+      Array.isArray(obj['enum']) &&
+      Array.isArray(obj['x-enumNames']) &&
+      !obj['x-enum-varnames']
+    ) {
+      obj['x-enum-varnames'] = obj['x-enumNames'];
+    }
+    for (const key of Object.keys(obj)) visit(obj[key]);
+  };
+  visit(document);
+  return document;
+}
+
+async function bootstrap() {
+  await performPreBootstrapChecks();
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  const app = await NestFactory.create(AppModule, {
+    logger: isProduction ? new ConsoleLogger({ json: true }) : undefined,
+  });
+
+  // Global prefix
+  app.setGlobalPrefix('api/v1');
+
+  // Validation pipe
+  app.useGlobalPipes(new ValidationPipe({ transform: true }));
+
+  // CORS
+  const frontendUrl = (
+    process.env.FRONTEND_URL ||
+    process.env.DASHBOARD_URL ||
+    ''
+  ).replace(/\/+$/, '');
+  const extraOrigins = new Set(
+    (process.env.CORS_ORIGINS || '')
+      .split(',')
+      .map((s) => s.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+  );
+  const isIpHost = (host: string): boolean =>
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
+  let apexDomain = '';
+  try {
+    const { hostname } = new URL(process.env.API_BASE_URL || '');
+    if (!isIpHost(hostname)) {
+      const parts = hostname.split('.');
+      if (parts.length >= 2) apexDomain = parts.slice(-2).join('.');
+    }
+  } catch {
+    /* no-op */
+  }
+  app.enableCors({
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean | string) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      const allowed =
+        (frontendUrl && origin === frontendUrl) ||
+        extraOrigins.has(origin) ||
+        (apexDomain &&
+          (origin === `https://${apexDomain}` ||
+            origin.endsWith(`.${apexDomain}`))) ||
+        (process.env.NODE_ENV !== 'production' &&
+          /^https?:\/\/localhost(:\d+)?$/.test(origin));
+      callback(null, allowed ? origin : false);
+    },
+    credentials: true,
+  });
+
+  // Swagger configuration
+  const config = new DocumentBuilder()
+    .setTitle('Flui.cloud API')
+    .setDescription('API documentation Flui.cloud')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = addEnumVarnamesExtension(
+    SwaggerModule.createDocument(app, config),
+  );
+
+  SwaggerModule.setup('docs/internal', app, document, {
+    jsonDocumentUrl: 'swagger/json',
+  });
+
+  // Public API docs with filtered endpoints
+  const publicDocument = addEnumVarnamesExtension(
+    SwaggerModule.createDocument(app, config, {
+      include: [], // We'll add public modules here later
+    }),
+  );
+  SwaggerModule.setup('docs/public', app, publicDocument);
+  app.useGlobalFilters(new HttpExceptionFilter());
+  await app.listen(process.env.PORT || 3000);
+}
+bootstrap();

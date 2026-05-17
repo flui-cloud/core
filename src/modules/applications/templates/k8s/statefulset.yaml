@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{SLUG}}
+  namespace: {{NAMESPACE}}
+  labels:
+{{LABELS_BLOCK}}
+  annotations:
+{{ANNOTATIONS_BLOCK}}
+spec:
+  serviceName: {{SLUG}}-headless
+  replicas: {{REPLICAS}}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: {{SLUG}}
+  template:
+    metadata:
+      labels:
+{{POD_LABELS_BLOCK}}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{PORT}}"
+        flui.cloud/config-hash: "{{CONFIG_HASH}}"
+    spec:
+{{NODE_PLACEMENT_BLOCK}}
+{{IMAGE_PULL_SECRETS_BLOCK}}
+      containers:
+        - name: {{SLUG}}
+          image: "{{IMAGE}}"
+          imagePullPolicy: {{PULL_POLICY}}
+{{COMMAND_OVERRIDE_BLOCK}}
+{{PORTS_BLOCK}}
+{{ENV_BLOCK}}
+          resources:
+            requests:
+              cpu: "{{CPU_REQUEST}}"
+              memory: "{{MEMORY_REQUEST}}"
+            limits:
+              cpu: "{{CPU_LIMIT}}"
+              memory: "{{MEMORY_LIMIT}}"
+{{READINESS_PROBE_BLOCK}}
+{{VOLUME_MOUNTS_BLOCK}}
+{{VOLUME_CLAIM_TEMPLATES_BLOCK}}

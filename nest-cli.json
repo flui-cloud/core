@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "tsconfig.build.json",
+    "assets": [
+      {
+        "include": "**/*.tf",
+        "outDir": "dist"
+      },
+      {
+        "include": "modules/infrastructure/shared/terraform/templates/**/*",
+        "outDir": "dist"
+      },
+      {
+        "include": "modules/instances/assets/**/*",
+        "outDir": "dist",
+        "watchAssets": true
+      },
+      {
+        "include": "modules/build-agents/templates/**/*",
+        "outDir": "dist",
+        "watchAssets": true
+      },
+      {
+        "include": "modules/dns/templates/**/*",
+        "outDir": "dist",
+        "watchAssets": true
+      },
+      {
+        "include": "modules/providers/implementations/**/assets/**/*.{svg,png,jpg,jpeg}",
+        "outDir": "dist",
+        "watchAssets": true
+      },
+      {
+        "include": "modules/backups/templates/**/*",
+        "outDir": "dist",
+        "watchAssets": true
+      }
+    ]
+  }
+}

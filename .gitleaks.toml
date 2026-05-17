@@ -1,0 +1,35 @@
+title = "Flui Cloud — gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for documented examples and generated clients"
+
+paths = [
+  '''src/modules/providers/implementations/contabo/openapi\.json''',
+  '''src/modules/providers/implementations/hetzner/openapi\.json''',
+  '''src/modules/providers/implementations/scaleway/.*\.json''',
+  '''src/generated-clients/.*''',
+  '''src/modules/providers/implementations/.*/generated/.*''',
+  '''.*\.example\..*''',
+  '''docs/.*''',
+  '''pnpm-lock\.yaml''',
+  '''package-lock\.json''',
+]
+
+regexes = [
+  '''00000000-0000-0000-0000-000000000000''',
+  '''YOUR_[A-Z_]+_HERE''',
+  '''<[A-Z_]+>''',
+  '''xxxxxxxx''',
+  '''ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx''',
+]
+
+stopwords = [
+  "example",
+  "placeholder",
+  "dummy",
+  "fake",
+  "sample",
+]

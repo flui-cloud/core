@@ -1,0 +1,143 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  gitleaks:
+    name: Gitleaks - Secret Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            zricethezav/gitleaks:latest detect \
+            --source=. \
+            --redact \
+            --report-format=sarif \
+            --report-path=gitleaks.sarif \
+            --exit-code=0
+
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 30
+          if-no-files-found: warn
+
+  eslint:
+    name: ESLint - Code Quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install ESLint SARIF formatter
+        run: pnpm add -D @microsoft/eslint-formatter-sarif
+
+      - name: Run ESLint
+        run: pnpm run lint --format @microsoft/eslint-formatter-sarif --output-file eslint.sarif || true
+
+      - name: Upload ESLint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint.sarif
+          retention-days: 30
+
+  semgrep:
+    name: Semgrep - SAST
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config auto \
+            --sarif \
+            --output semgrep.sarif \
+            --include='src/**' \
+            --include='cli/src/**' \
+            --exclude='**/node_modules/**' \
+            --exclude='**/dist/**' \
+            --exclude='**/generated/**' \
+            --exclude='**/*.spec.ts' \
+            --exclude='**/*.e2e-spec.ts' \
+            . || true
+
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep.sarif
+          retention-days: 30
+          if-no-files-found: warn
+
+  pnpm-audit:
+    name: pnpm audit - Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit (high/critical only)
+        run: pnpm audit --audit-level=high --prod || true
+
+      - name: Audit JSON report
+        if: always()
+        run: pnpm audit --json > pnpm-audit.json || true
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-audit-report
+          path: pnpm-audit.json
+          retention-days: 30
+          if-no-files-found: warn

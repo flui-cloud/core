@@ -1,0 +1,43 @@
+import { ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { ApiKeyStrategy } from '../strategies/api-key.strategy';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly apiKeyStrategy: ApiKeyStrategy,
+  ) {
+    super();
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+
+    const request = context.switchToHttp().getRequest();
+    const authHeader: string = request.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+
+    // API key M2M — valid for both local and OIDC modes
+    if (token.startsWith('flui_')) {
+      const user = await this.apiKeyStrategy.validate(token);
+      request.user = user;
+      return true;
+    }
+
+    // JWT strategy selected at runtime based on AUTH_MODE
+    const strategy = process.env.AUTH_MODE === 'local' ? 'local-jwt' : 'jwt';
+    return AuthGuard(strategy).prototype.canActivate.call(
+      this,
+      context,
+    ) as Promise<boolean>;
+  }
+}

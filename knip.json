@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/main.ts",
+    "src/config/data-source.ts",
+    "cli/bin/run",
+    "cli/src/index.ts",
+    "scripts/**/*.{ts,js}",
+    "test/**/*.e2e-spec.ts"
+  ],
+  "project": ["src/**/*.ts", "cli/src/**/*.ts", "scripts/**/*.{ts,js}"],
+  "ignore": [
+    "src/generated-clients/**",
+    "src/modules/providers/implementations/*/generated/**",
+    "**/*.spec.ts",
+    "**/migrations/**",
+    "dist/**",
+    "cli/lib/**"
+  ],
+  "ignoreDependencies": [
+    "ts-loader",
+    "source-map-support",
+    "@openapitools/openapi-generator-cli"
+  ],
+  "ignoreBinaries": ["openapi-generator", "ngrok"]
+}

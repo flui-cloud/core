@@ -1,0 +1,105 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: mariadb
+  name: MariaDB
+  description: >
+    Community-developed fork of MySQL — the most widely used relational
+    database for web applications. 100% open source (GPL v2), drop-in
+    replacement for MySQL. Used as a building block by WordPress and other
+    CMS/web apps in the catalog.
+  appKind: DATABASE
+  category: database
+  tags:
+    - database
+    - relational
+    - sql
+    - mysql-compatible
+    - building-block
+  license: GPL-2.0
+  version: '11'
+  maintainedAt: '2026-04-22'
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/mariadb.svg
+  links:
+    website: https://mariadb.org
+    docs: https://mariadb.com/kb/en/documentation/
+    source: https://github.com/MariaDB/server
+
+spec:
+  type: building-block
+
+  image:
+    registry: docker.io
+    repository: library/mariadb
+    tag: '11-jammy'
+
+  ports:
+    - name: mysql
+      internal: 3306
+      expose: false
+      protocol: tcp
+
+  volumes:
+    - name: data
+      mountPath: /var/lib/mysql
+      required: true
+      size: 10Gi
+
+  persistence:
+    scope: dedicated
+
+  env:
+    - name: MARIADB_DATABASE
+      value: '{{app.id}}'
+    - name: MARIADB_USER
+      value: '{{app.id}}'
+    - name: MARIADB_PASSWORD
+      valueFrom:
+        generate: secret
+        length: 32
+    - name: MARIADB_ROOT_PASSWORD
+      valueFrom:
+        generate: secret
+        length: 32
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: '2'
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 250m
+          max: '4'
+        memory:
+          min: 256Mi
+          max: 8Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+          - CPUThrottling
+        cooldown: 10m
+
+  healthcheck:
+    type: exec
+    command:
+      - healthcheck.sh
+      - --connect
+      - --innodb_initialized
+    initialDelay: 15s
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+  auth:
+    mode: none

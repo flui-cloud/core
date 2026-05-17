@@ -1,0 +1,31 @@
+{
+  "_comment": "Resource profiles for application deployments. Edit this file to change profiles without touching code. Restart required to reload.",
+  "defaultProfile": "small",
+  "profiles": [
+    {
+      "name": "nano",
+      "cpu":    { "request": "50m",   "limit": "200m"  },
+      "memory": { "request": "64Mi",  "limit": "128Mi" }
+    },
+    {
+      "name": "small",
+      "cpu":    { "request": "100m",  "limit": "500m"  },
+      "memory": { "request": "128Mi", "limit": "256Mi" }
+    },
+    {
+      "name": "medium",
+      "cpu":    { "request": "250m",  "limit": "1000m" },
+      "memory": { "request": "256Mi", "limit": "512Mi" }
+    },
+    {
+      "name": "large",
+      "cpu":    { "request": "500m",  "limit": "2000m" },
+      "memory": { "request": "512Mi", "limit": "1Gi"   }
+    },
+    {
+      "name": "xlarge",
+      "cpu":    { "request": "1000m", "limit": "4000m" },
+      "memory": { "request": "1Gi",   "limit": "2Gi"   }
+    }
+  ]
+}

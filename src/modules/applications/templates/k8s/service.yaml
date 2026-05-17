@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{SLUG}}-svc
+  namespace: {{NAMESPACE}}
+  labels:
+{{LABELS_BLOCK}}
+spec:
+  selector:
+    app: {{SLUG}}
+  ports:
+    - port: {{PORT}}
+      targetPort: {{PORT}}
+      protocol: TCP
+  type: ClusterIP

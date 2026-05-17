@@ -1,0 +1,174 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: wordpress-composed
+  name: WordPress (composed)
+  description: >
+    All-in-one WordPress stack: WordPress + MariaDB in a single atomic
+    install. Database and web tier are provisioned together and torn down
+    together — no shared building block, no dependencies to wire. Use this
+    when you want the simplest possible "one-click" WordPress install on
+    your cluster.
+  appKind: APPLICATION
+  category: cms
+  tags:
+    - wordpress
+    - cms
+    - blog
+    - composed
+    - php
+  license: GPL-2.0-or-later
+  version: "6.5"
+  maintainedAt: "2026-04-24"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/wordpress.svg
+  links:
+    website: https://wordpress.org
+    docs: https://wordpress.org/documentation/
+    source: https://github.com/WordPress/WordPress
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: wordpress.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/mariadb
+        tag: "11"
+      ports:
+        - name: mysql
+          internal: 3306
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/mysql
+          required: true
+          size: 5Gi
+      env:
+        - name: MARIADB_DATABASE
+          value: wordpress
+        - name: MARIADB_USER
+          value: wordpress
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+              - CPUThrottling
+            cooldown: 10m
+      healthcheck:
+        type: tcp
+        port: 3306
+        initialDelay: 15s
+        interval: 10s
+        timeout: 5s
+        retries: 10
+
+    - name: web
+      dependsOn:
+        - db
+      image:
+        registry: docker.io
+        repository: library/wordpress
+        tag: "6.5-apache"
+      ports:
+        - name: http
+          internal: 80
+          expose: true
+          protocol: http
+      volumes:
+        - name: content
+          mountPath: /var/www/html/wp-content
+          required: true
+          size: 5Gi
+      env:
+        - name: WORDPRESS_DB_HOST
+          value: "{{components.db.host}}:3306"
+        - name: WORDPRESS_DB_NAME
+          value: "{{components.db.env.MARIADB_DATABASE}}"
+        - name: WORDPRESS_DB_USER
+          value: "{{components.db.env.MARIADB_USER}}"
+        - name: WORDPRESS_DB_PASSWORD
+          value: "{{components.db.env.MARIADB_PASSWORD}}"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "2"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "4"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /wp-login.php
+        port: 80
+        initialDelay: 20s
+        interval: 15s
+        timeout: 5s
+        retries: 6
+
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /wp-login.php
+    expectedStatus: 200
+    timeoutSeconds: 60

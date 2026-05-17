@@ -1,0 +1,97 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: vaultwarden
+  name: Vaultwarden
+  description: >
+    Self-hosted password manager compatible with all official Bitwarden
+    clients. Your credentials stay on your own EU server.
+  appKind: APPLICATION
+  category: security
+  tags:
+    - password-manager
+    - security
+    - bitwarden-compatible
+    - gdpr
+  license: AGPL-3.0
+  version: "1.35.7"
+  maintainedAt: "2026-04-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/vaultwarden.svg
+  links:
+    website: https://github.com/dani-garcia/vaultwarden
+    docs: https://github.com/dani-garcia/vaultwarden/wiki
+    source: https://github.com/dani-garcia/vaultwarden
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - 1Password
+    - LastPass
+    - Bitwarden Cloud
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: vaultwarden/server
+    tag: "1.35.7"
+
+  ports:
+    - name: http
+      internal: 80
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 2Gi
+
+  env:
+    - name: DOMAIN
+      value: "https://{{app.domain}}"
+    - name: ADMIN_TOKEN
+      valueFrom:
+        generate: secret
+        length: 48
+    - name: SIGNUPS_ALLOWED
+      value: "true"
+      userEditable: true
+      description: Allow new users to register an account
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 64Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
