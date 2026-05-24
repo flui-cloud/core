@@ -9,10 +9,7 @@ import { ApplicationEntity } from '../../applications/entities/application.entit
 import { KubernetesService } from '../../infrastructure/shared/services/kubernetes.service';
 import { EncryptionService } from '../../shared/encryption/services/encryption.service';
 import { AppManagementService } from '../../applications/services/app-management.service';
-import {
-  OidcProviderAdminClient,
-  resolveProviderJwksUri,
-} from '../../oidc/services/oidc-provider-admin.service';
+import { OidcProviderAdminClient } from '../../oidc/services/oidc-provider-admin.service';
 import { OidcIdentityBranding } from '../../oidc/services/oidc-identity-branding.service';
 import { buildSystemNipHostname } from '../../dns/utils/nip-hostname.util';
 
@@ -535,7 +532,9 @@ export class OidcBootstrapService {
     const existingData: Record<string, string> = { ...body.data };
     existingData['AUTH_MODE'] = 'oidc';
     existingData['OIDC_ISSUER'] = issuer;
-    existingData['OIDC_JWKS_URI'] = resolveProviderJwksUri();
+    // Must use the public URL: the OIDC provider rejects /oauth/v2/keys when Host doesn't match its external domain.
+    existingData['OIDC_JWKS_URI'] =
+      `${issuer.replace(/\/+$/, '')}/oauth/v2/keys`;
     existingData['OIDC_CLI_CLIENT_ID'] = cliClientId;
     delete existingData['ZITADEL_ISSUER'];
     delete existingData['ZITADEL_JWKS_URI'];
