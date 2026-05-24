@@ -38,16 +38,18 @@ export interface PreferenceDefinition<T = string> {
 export const PREFERENCES: Record<PreferenceKey, PreferenceDefinition> = {
   email: {
     key: 'email',
-    description: 'Contact email used for ACME/Let\'s Encrypt and operational notifications',
+    description:
+      "Contact email used for ACME/Let's Encrypt and operational notifications",
     envVar: 'FLUI_EMAIL',
     projectOverridable: true,
     required: true,
-    validate: (v) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Not a valid email'),
+    validate: (v) =>
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Not a valid email',
   },
   apiPath: {
     key: 'apiPath',
     description:
-      'Path to the flui.api repo, used to locate the .env file written by env export-config',
+      'Path to the flui-core repo, used to locate the .env file written by env export-config',
     envVar: 'FLUI_API_PATH',
     projectOverridable: true,
     defaultValue: '.',
@@ -55,15 +57,17 @@ export const PREFERENCES: Record<PreferenceKey, PreferenceDefinition> = {
   },
   dashboardPath: {
     key: 'dashboardPath',
-    description: 'Path to the flui.dashboard repo, used when syncing its config.json',
+    description:
+      'Path to the flui-dashboard repo, used when syncing its config.json',
     envVar: 'FLUI_DASHBOARD_PATH',
     projectOverridable: true,
-    defaultValue: '../flui.dashboard',
+    defaultValue: '../flui-dashboard',
     required: false,
   },
   certificateMode: {
     key: 'certificateMode',
-    description: 'Certificate issuance policy written into the dashboard config',
+    description:
+      'Certificate issuance policy written into the dashboard config',
     envVar: 'FLUI_CERTIFICATE_MODE',
     projectOverridable: true,
     defaultValue: 'production',
