@@ -19,6 +19,7 @@ import { ReconciliationStatus } from '../../infrastructure/shared/enums/reconcil
 import { ApplicationSourceType } from '../../applications/enums/application-source-type.enum';
 import { ApplicationExposure } from '../../applications/enums/application-exposure.enum';
 import { EndpointType } from '../enums/endpoint-type.enum';
+import { HostnameMode } from '../enums/hostname-mode.enum';
 import { ClusterDnsZoneService } from './cluster-dns-zone.service';
 import { EndpointModeResolverService } from './endpoint-mode-resolver.service';
 import { ClusterAuthzInstallRepository } from '../../authz/repositories/cluster-authz-install.repository';
@@ -105,6 +106,8 @@ export class AppEndpointService {
       clusterDnsZoneId: assignment.id,
       endpointType: EndpointType.INTERNAL,
       fqdn,
+      // Override entity default (IP) — internal FQDNs are under the cluster zone, not nip.io.
+      hostnameMode: HostnameMode.DOMAIN,
       serviceName: application.name,
       k8sServiceName:
         application.sourceType === ApplicationSourceType.RAW_MANIFEST
