@@ -212,6 +212,36 @@ export const TEMPLATE_REGISTRY: TemplateConfig[] = [
     isDefault: true,
     isDeprecated: false,
   },
+  {
+    framework: 'vue-vite',
+    displayName: 'Vue (Vite)',
+    description:
+      'Vue 3 SPA with Vite + TypeScript, served via nginx with SPA fallback',
+    version: '3',
+    repo: 'flui-template-vue-vite-3',
+    category: 'frontend',
+    language: 'typescript',
+    port: 80,
+    healthcheckPath: '/health',
+    buildTool: 'npm + nginx',
+    isDefault: true,
+    isDeprecated: false,
+  },
+  {
+    framework: 'vitepress',
+    displayName: 'VitePress',
+    description:
+      'Vue-powered static documentation site with Markdown and local search',
+    version: '1',
+    repo: 'flui-template-vitepress-1',
+    category: 'static',
+    language: 'typescript',
+    port: 80,
+    healthcheckPath: '/health',
+    buildTool: 'npm + nginx',
+    isDefault: true,
+    isDeprecated: false,
+  },
 ];
 
 /**
