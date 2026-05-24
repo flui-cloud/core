@@ -195,6 +195,20 @@ export interface AvailableVersionsResponse {
   allowedPatterns: string[] | null;
 }
 
+export interface AppEndpoint {
+  id: string;
+  clusterId: string;
+  applicationId?: string;
+  endpointType: string;
+  hostnameMode: string;
+  fqdn: string;
+  tlsEnabled: boolean;
+  certificateStatus?: string;
+  certificateMessage?: string;
+  reconciliationStatus?: string;
+  errorMessage?: string;
+}
+
 export class CliAppService {
   private readonly apiClient: ApiClient;
   private readonly clusterId: string;
@@ -238,6 +252,15 @@ export class CliAppService {
 
   async getRuntime(appId: string): Promise<AppRuntime> {
     return this.apiClient.get<AppRuntime>(`/applications/${appId}/runtime`);
+  }
+
+  async listEndpoints(applicationId?: string): Promise<AppEndpoint[]> {
+    const all = await this.apiClient.get<AppEndpoint[]>(
+      `/clusters/${this.clusterId}/endpoints`,
+    );
+    return applicationId
+      ? all.filter((e) => e.applicationId === applicationId)
+      : all;
   }
 
   async getLogs(options: AppLogsOptions): Promise<AppLogsResponse> {
