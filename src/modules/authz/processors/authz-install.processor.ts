@@ -241,6 +241,7 @@ export class AuthzInstallProcessor {
       const data = (cm?.body ?? cm)?.data ?? {};
       authMode = data['AUTH_MODE'] ?? 'unknown';
       issuer = data['OIDC_ISSUER'] ?? '';
+      jwksUri = data['OIDC_JWKS_URI'] ?? '';
     } catch {
       /* leave defaults */
     }
@@ -286,7 +287,16 @@ export class AuthzInstallProcessor {
       }
     }
 
-    jwksUri = `${issuer}/oauth/v2/keys`;
+    // Fail fast — installing with an invalid JWKS URI produces an auth-deny loop later.
+    if (!jwksUri) {
+      if (!issuer) {
+        throw new Error(
+          'Cannot resolve OIDC JWKS URI: neither OIDC_JWKS_URI nor OIDC_ISSUER is set in flui-api-config. ' +
+            'Wait for OidcBootstrapService to populate these and retry.',
+        );
+      }
+      jwksUri = `${issuer.replace(/\/+$/, '')}/oauth/v2/keys`;
+    }
 
     return { jwksUri, audience, issuer, dashboardUrl };
   }
