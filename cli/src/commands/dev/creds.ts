@@ -32,7 +32,7 @@ export default class DevCreds extends Command {
   static readonly examples = [
     '<%= config.bin %> <%= command.id %>',
     '<%= config.bin %> <%= command.id %> --dry-run',
-    '<%= config.bin %> <%= command.id %> --api-path ../flui.api',
+    '<%= config.bin %> <%= command.id %> --api-path ../flui-core',
   ];
 
   static readonly flags = {
@@ -98,13 +98,6 @@ export default class DevCreds extends Command {
       const fluiSecrets = await this.readFluiSecrets(sshService, masterIp);
       spinner.succeed('flui-secrets read');
 
-      // OIDC issuer from flui-api-config — used to point local API at the
-      // public Zitadel admin URL instead of the in-cluster service DNS.
-      spinner = ora('Reading OIDC issuer from flui-api-config...').start();
-      const oidcIssuer = await this.readOidcIssuer(sshService, masterIp);
-      if (oidcIssuer) spinner.succeed(`OIDC issuer: ${oidcIssuer}`);
-      else spinner.warn('OIDC issuer not found in flui-api-config');
-
       // Local encryption key — shared with API via ~/.flui/encryption.key.
       const encryptionKeyPath = path.join(
         os.homedir(),
@@ -125,7 +118,6 @@ export default class DevCreds extends Command {
         passwords,
         encryptionKey,
         fluiSecrets,
-        oidcIssuer,
       });
 
       this.printSummary(envLocalPath, envVars);
@@ -192,9 +184,8 @@ export default class DevCreds extends Command {
     passwords: { postgres: string; redis: string; grafana: string };
     encryptionKey: string;
     fluiSecrets: FluiSecrets;
-    oidcIssuer: string | null;
   }): Record<string, string> {
-    const { passwords, encryptionKey, fluiSecrets, oidcIssuer } = opts;
+    const { passwords, encryptionKey, fluiSecrets } = opts;
     const envVars: Record<string, string> = {
       DB_PASSWORD: passwords.postgres,
       REDIS_PASSWORD: passwords.redis,
@@ -210,7 +201,6 @@ export default class DevCreds extends Command {
       envVars.SSH_CA_PUBLIC_KEY = fluiSecrets.sshCaPublicKey;
     if (fluiSecrets.zitadelPat)
       envVars.ZITADEL_SERVICE_ACCOUNT_PAT = fluiSecrets.zitadelPat;
-    if (oidcIssuer) envVars.OIDC_PROVIDER_ADMIN_URL = oidcIssuer;
     return envVars;
   }
 
@@ -267,22 +257,6 @@ export default class DevCreds extends Command {
       };
     } catch {
       return {};
-    }
-  }
-
-  private async readOidcIssuer(
-    sshService: CliSshService,
-    masterIp: string,
-  ): Promise<string | undefined> {
-    try {
-      const raw = await sshService.sshExec(
-        masterIp,
-        "kubectl -n flui-system get configmap flui-api-config -o jsonpath='{.data.OIDC_ISSUER}'",
-      );
-      const trimmed = raw.trim();
-      return trimmed || undefined;
-    } catch {
-      return undefined;
     }
   }
 

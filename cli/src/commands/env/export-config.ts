@@ -45,8 +45,6 @@ export default class EnvExportConfig extends Command {
       description: 'Skip updating the dashboard config.json',
       default: false,
     }),
-    // Direct overrides for the layered preferences resolver.
-    // Without these, values resolve from env > project file > user config > prompt.
     'api-path': Flags.string({
       description: `Override resolved value for the "apiPath" preference (${PREFERENCES.apiPath.description})`,
     }),
@@ -112,11 +110,7 @@ export default class EnvExportConfig extends Command {
       );
       spinner.succeed('Endpoints resolved');
 
-      // ADMIN_EMAIL and SSH_CA_PUBLIC_KEY live in flui-secrets but reading
-      // them here would require kube-API access (closed by the new firewall
-      // policy). They are written to .env.local by `flui dev creds`, which
-      // reaches the secret over SSH+kubectl. Here we fall back to the
-      // 'email' preference and skip the public CA key.
+      // Written to .env.local by `flui dev creds` (reads flui-secrets over SSH+kubectl).
       const adminEmail = '';
       const sshCaPublicKey = '';
 
@@ -125,7 +119,6 @@ export default class EnvExportConfig extends Command {
       const resolvedIssuer = this.resolveIssuer(endpoints);
       const resolvedJwks = this.resolveJwks(endpoints, resolvedIssuer);
 
-      // Display configuration
       console.log(chalk.cyan('\n📋 Exporting Cluster Configuration\n'));
       console.log(`   ${chalk.bold('Cluster:')}    ${cluster.name}`);
       console.log(`   ${chalk.bold('Master IP:')}  ${masterIp}`);
@@ -162,7 +155,18 @@ export default class EnvExportConfig extends Command {
         console.log(
           `   OIDC_AUDIENCE=${endpoints.oidcAudience || chalk.dim('(set after first Zitadel setup)')}`,
         );
+        const adminUrlPreview = endpoints.zitadel.fqdn
+          ? `https://${endpoints.zitadel.fqdn}`
+          : chalk.dim('(zitadel ingress not found)');
+        console.log(`   OIDC_PROVIDER_ADMIN_URL=${adminUrlPreview}`);
+        console.log(
+          `   OIDC_CLI_CLIENT_ID=${endpoints.oidcCliClientId || chalk.dim('(not yet provisioned)')}`,
+        );
       }
+      const publicWebUrlPreview = endpoints.fluiWeb.fqdn
+        ? `https://${endpoints.fluiWeb.fqdn}`
+        : chalk.dim('(flui-web ingress not found)');
+      console.log(`   PUBLIC_WEB_URL=${publicWebUrlPreview}`);
       console.log(`   AUTH_MODE=${authMode}`);
       console.log(`   ADMIN_EMAIL=${adminEmail || chalk.dim('(not set)')}`);
       console.log(
@@ -202,8 +206,6 @@ export default class EnvExportConfig extends Command {
 
       spinner = ora('Updating .env file...').start();
 
-      // .env lives next to the resolved apiPath. Defaults to '.' (cwd) so legacy
-      // invocations from inside flui.api keep working without any preference set.
       const apiDir = path.isAbsolute(preferences.apiPath)
         ? preferences.apiPath
         : path.resolve(process.cwd(), preferences.apiPath);
@@ -248,9 +250,16 @@ export default class EnvExportConfig extends Command {
       if (resolvedJwks) envVars.OIDC_JWKS_URI = resolvedJwks;
       if (endpoints.oidcAudience)
         envVars.OIDC_AUDIENCE = endpoints.oidcAudience;
+      // Zitadel admin API enforces Host header matching ExternalDomain.
+      if (endpoints.zitadel.fqdn)
+        envVars.OIDC_PROVIDER_ADMIN_URL = `https://${endpoints.zitadel.fqdn}`;
+      // Avoids OidcBootstrapSeeder re-provisioning the CLI app on every boot.
+      if (endpoints.oidcCliClientId)
+        envVars.OIDC_CLI_CLIENT_ID = endpoints.oidcCliClientId;
+      // Consumed by flui-authz install for the login-redirect URL.
+      if (endpoints.fluiWeb.fqdn)
+        envVars.PUBLIC_WEB_URL = `https://${endpoints.fluiWeb.fqdn}`;
 
-      // ADMIN_EMAIL: prefer the value baked into the cluster's flui-secrets, fall back to
-      // the resolved 'email' preference. Either way the API gets a populated value.
       const resolvedEmail = adminEmail || preferences.email;
       if (resolvedEmail) envVars.ADMIN_EMAIL = resolvedEmail;
       if (sshCaPublicKey) envVars.SSH_CA_PUBLIC_KEY = sshCaPublicKey;
@@ -290,15 +299,6 @@ export default class EnvExportConfig extends Command {
     }
   }
 
-  /**
-   * Resolve every preference this command consumes (email, dashboardPath, certificateMode)
-   * through the layered config: flag > env > project-local > user > default > prompt.
-   *
-   * Prompted values are persisted to the active profile only when --save is set;
-   * otherwise they are used for this run and forgotten (no surprise side effects).
-   *
-   * `skipDashboard` shortcuts the dashboard-only preferences when --no-dashboard is set.
-   */
   private async resolvePreferences(opts: {
     emailFlag?: string;
     apiPathFlag?: string;
@@ -371,10 +371,6 @@ export default class EnvExportConfig extends Command {
     return out;
   }
 
-  /**
-   * Patch the dashboard's config.json with the localhost API endpoints + cluster auth +
-   * the resolved certificateMode. Caller is responsible for resolving inputs.
-   */
   private async syncDashboardConfig(opts: {
     dashboardPath: string;
     certificateMode: string;
@@ -445,10 +441,6 @@ export default class EnvExportConfig extends Command {
     );
   }
 
-  /**
-   * Prompt for a missing preference value, validating against the schema.
-   * Used only when every other layer (flag, env, project, user, default) failed to provide a value.
-   */
   private async promptForPreference(key: PreferenceKey): Promise<string> {
     const def = PREFERENCES[key];
     return promptInput({

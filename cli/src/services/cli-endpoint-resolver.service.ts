@@ -30,6 +30,7 @@ export interface SystemEndpoints {
   oidcAudience: string;
   /** Public OIDC client ID consumed by the dashboard (flui-web-config ConfigMap). */
   oidcClientId: string;
+  oidcCliClientId: string;
 }
 
 interface AppSpec {
@@ -134,6 +135,7 @@ export class CliEndpointResolverService {
     const authMode = configMapData['AUTH_MODE'] ?? 'unknown';
     const oidcIssuer = configMapData['OIDC_ISSUER'] ?? '';
     const oidcJwksUri = configMapData['OIDC_JWKS_URI'] ?? '';
+    const oidcCliClientId = configMapData['OIDC_CLI_CLIENT_ID'] ?? '';
     const oidcAudience = secretData['OIDC_AUDIENCE']
       ? Buffer.from(secretData['OIDC_AUDIENCE'], 'base64').toString('utf-8')
       : '';
@@ -174,6 +176,7 @@ export class CliEndpointResolverService {
       oidcJwksUri,
       oidcAudience,
       oidcClientId,
+      oidcCliClientId,
     };
   }
 
@@ -207,9 +210,13 @@ export class CliEndpointResolverService {
     masterIp: string,
     nipHostnameToken?: string | null,
   ): EndpointInfo {
+    // Prefer the k8s native Ingress over Traefik IngressRoute when both exist:
+    // `configure-system-ingress` writes Ingress with the user-chosen domain
+    // (e.g. *.flui.cloud), while the legacy IngressRoute may still carry
+    // the nip.io hostname seeded at cluster bootstrap.
     const match =
-      this.findIngressRouteMatch(spec, ingressRoutes) ??
-      this.findIngressMatch(spec, ingresses);
+      this.findIngressMatch(spec, ingresses) ??
+      this.findIngressRouteMatch(spec, ingressRoutes);
 
     const baseDomain = buildNipBaseDomain(masterIp, nipHostnameToken);
     const defaultFqdn = spec.defaultSubdomain
