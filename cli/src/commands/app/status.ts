@@ -41,12 +41,15 @@ export default class AppStatus extends Command {
       const { id: clusterId } = await resolveCluster(flags.cluster);
       const service = await CliAppService.create(clusterId);
       const app = await service.getAppByName(args.name);
-      const runtime = await service.getRuntime(app.id);
+      const [runtime, endpoints] = await Promise.all([
+        service.getRuntime(app.id),
+        service.listEndpoints(app.id).catch(() => []),
+      ]);
 
       spinner.stop();
 
       if (flags.output === 'json') {
-        console.log(JSON.stringify({ app, runtime }, null, 2));
+        console.log(JSON.stringify({ app, runtime, endpoints }, null, 2));
         return;
       }
 
@@ -88,11 +91,46 @@ export default class AppStatus extends Command {
         for (const c of runtime.containers) this.printContainer(c);
       }
 
+      if (endpoints.length > 0) {
+        console.log(chalk.cyan('\n  Endpoints\n'));
+        for (const e of endpoints) this.printEndpoint(e);
+      }
+
       console.log('');
     } catch (error: any) {
       spinner.fail('Failed to fetch status');
       console.log(chalk.red(`\n  Error: ${error.message}\n`));
       this.exit(1);
+    }
+  }
+
+  private printEndpoint(e: {
+    fqdn: string;
+    tlsEnabled: boolean;
+    endpointType: string;
+    hostnameMode: string;
+    certificateStatus?: string;
+    certificateMessage?: string;
+    reconciliationStatus?: string;
+  }): void {
+    const scheme = e.tlsEnabled ? 'https' : 'http';
+    const url = `${scheme}://${e.fqdn}`;
+    console.log(`  ${chalk.bold('URL:')}        ${chalk.cyan(url)}`);
+    const meta = [
+      e.endpointType,
+      e.hostnameMode,
+      e.tlsEnabled ? 'tls' : 'no-tls',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    console.log(`  ${chalk.dim(meta)}`);
+    if (e.certificateStatus && e.certificateStatus !== 'ISSUED') {
+      const color = e.certificateStatus === 'FAILED' ? chalk.red : chalk.yellow;
+      console.log(
+        `  ${chalk.bold('Cert:')}       ${color(e.certificateStatus)}${
+          e.certificateMessage ? ` — ${e.certificateMessage}` : ''
+        }`,
+      );
     }
   }
 
