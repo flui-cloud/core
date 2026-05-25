@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -457,7 +458,7 @@ export default class EnvCreate extends Command {
         const vnetService = app.get(VnetProvisioningService);
         envVnetInfo = await vnetService.ensureEnvVnet({
           provider: cloudProvider,
-          name: 'flui-env-vnet',
+          name: `flui-env-${randomBytes(3).toString('hex')}`,
           ipRange: '10.10.0.0/16',
           subnetIpRange: '10.10.1.0/24',
           networkZone:
