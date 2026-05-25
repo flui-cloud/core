@@ -89,6 +89,28 @@ export class GithubAppOAuthController {
     }
   }
 
+  @Post('rescan-installations')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-sync the current user installations from GitHub',
+    description:
+      'Calls GitHub with the user OAuth token and upserts every accessible ' +
+      'GitHub App installation into the local database. Use this after ' +
+      'installing the App on a new account/org outside the Flui dashboard, ' +
+      'or in webhook-less environments where the `installation` event ' +
+      "doesn't reach Flui.",
+  })
+  async rescanInstallations(
+    @Req() req: Request,
+  ): Promise<{ count: number; installationIds: number[] }> {
+    const user = req.user as AuthenticatedUser | undefined;
+    if (!user?.userId) {
+      throw new BadRequestException('Authenticated user has no userId');
+    }
+    return this.userAuth.rescanInstallations(user.userId);
+  }
+
   @Get('install-url')
   @ApiBearerAuth()
   @ApiOperation({
@@ -108,6 +130,7 @@ export class GithubAppOAuthController {
   ): Promise<{
     alreadyConnected: boolean;
     login?: string;
+    needsInstall?: boolean;
     installUrl?: string;
     state?: string;
   }> {
@@ -117,7 +140,8 @@ export class GithubAppOAuthController {
     }
 
     const status = await this.userAuth.getConnectionStatus(user.userId);
-    if (status.connected) {
+    const installationsCount = status.installationsCount ?? 0;
+    if (status.connected && installationsCount > 0) {
       return { alreadyConnected: true, login: status.login };
     }
 
@@ -125,8 +149,18 @@ export class GithubAppOAuthController {
       ? this.assertLocalLoopbackUrl(cliCallback)
       : undefined;
     const state = this.stateStore.issue(user.userId, validatedCliCallback);
-    const installUrl = await this.userAuth.buildInstallUrl(state);
-    return { alreadyConnected: false, installUrl, state };
+    // Token but no installation → skip the OAuth re-prompt and send the user
+    // straight to GitHub's install picker (it still fires OAuth on install).
+    const installUrl = status.connected
+      ? await this.userAuth.buildInstallOnlyUrl(state)
+      : await this.userAuth.buildInstallUrl(state);
+    return {
+      alreadyConnected: false,
+      needsInstall: status.connected,
+      login: status.login,
+      installUrl,
+      state,
+    };
   }
 
   private assertLocalLoopbackUrl(raw: string): string {

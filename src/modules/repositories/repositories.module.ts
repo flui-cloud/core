@@ -19,6 +19,7 @@ import { GitHubIntegrationConfigService } from './services/github-integration-co
 import { GitHubAppService } from './services/github-app.service';
 import { GitHubTokenResolverService } from './services/github-token-resolver.service';
 import { GithubAppInstallStateService } from './services/github-app-install-state.service';
+import { GithubAppManifestStateService } from './services/github-app-manifest-state.service';
 import { GithubAppUserAuthService } from './services/github-app-user-auth.service';
 import { EnvExtractorService } from './services/env-extractor.service';
 import { DockerfileAnalyzerService } from './services/dockerfile-analyzer.service';
@@ -65,6 +66,7 @@ import { WsAuthModule } from '../auth/ws-auth.module';
     GitHubAppService,
     GitHubTokenResolverService,
     GithubAppInstallStateService,
+    GithubAppManifestStateService,
     GithubAppUserAuthService,
     UserEventsGateway,
     EnvExtractorService,

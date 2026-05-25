@@ -9,48 +9,6 @@ import {
 import { GitHubAuthMethod } from '../enums/github-auth-method.enum';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class GitHubOAuthInitiateResponseDto {
-  @ApiProperty({
-    description: 'GitHub OAuth authorization URL',
-    example: 'https://github.com/login/oauth/authorize?client_id=...',
-  })
-  url: string;
-
-  @ApiProperty({ description: 'State token for CSRF protection' })
-  state: string;
-}
-
-export class GitHubOAuthCallbackDto {
-  @IsOptional()
-  @IsString()
-  @ApiProperty({
-    description: 'Authorization code from GitHub',
-    required: false,
-  })
-  code?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiProperty({
-    description: 'State token for CSRF validation',
-    required: false,
-  })
-  state?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiProperty({
-    description: 'Error code if authorization failed',
-    required: false,
-  })
-  error?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiProperty({ description: 'Error description', required: false })
-  error_description?: string;
-}
-
 export class GitHubOAuthStatusResponseDto {
   @ApiProperty({ description: 'Whether GitHub OAuth is connected' })
   connected: boolean;
@@ -135,27 +93,6 @@ export class ConnectPatDto {
     example: 'ghp_xxxxxxxxxxxxxxxxxxxx',
   })
   personalAccessToken: string;
-}
-
-export class GitHubSetupOAuthDto {
-  @IsString()
-  @IsNotEmpty()
-  @ApiProperty({ description: 'GitHub OAuth App Client ID' })
-  clientId: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @ApiProperty({ description: 'GitHub OAuth App Client Secret' })
-  clientSecret: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @ApiProperty({
-    description:
-      'OAuth callback URL (must match the one configured in your GitHub OAuth App)',
-    example: 'https://myflui.com/api/v1/repositories/github/callback',
-  })
-  callbackUrl: string;
 }
 
 export class GitHubSetupAppDto {
@@ -339,4 +276,147 @@ export class PublicRepoBranchDto {
 
   @ApiProperty({ description: 'HEAD commit SHA' })
   sha: string;
+}
+
+export class GitHubAppManifestStartDto {
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({
+    description:
+      'Display name for the GitHub App to be created. Must be unique across GitHub.',
+    example: 'flui-acme',
+  })
+  name: string;
+
+  @IsBoolean()
+  @ApiProperty({
+    description: 'Whether webhooks should be enabled on the new App',
+  })
+  webhooksEnabled: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  @ApiProperty({
+    required: false,
+    default: false,
+    description:
+      'When true, the App is created as public on GitHub — any account or org can install it. When false (default), only the account that owns the App can install it. Enable this if Flui needs to access repos under multiple accounts or organizations.',
+  })
+  publicApp?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @ApiProperty({
+    required: false,
+    description:
+      'Public base URL of this Flui API instance. Used to derive the manifest redirect URL, the OAuth callback URL and (when webhooks are enabled) the webhook URL. ' +
+      'If omitted, the API falls back to the PUBLIC_API_URL env var and finally to the request Host header.',
+    example: 'https://flui.acme.com',
+  })
+  publicApiUrl?: string;
+}
+
+export class GitHubAppManifestStartResponseDto {
+  @ApiProperty({
+    description:
+      'The manifest payload to POST to githubUrl as a hidden form field named "manifest".',
+    type: Object,
+  })
+  manifestJson: Record<string, unknown>;
+
+  @ApiProperty({
+    description:
+      'URL to POST the manifest to. Construct an HTML <form method="POST" action="<this>"> with a hidden <input name="manifest" value="<JSON.stringify(manifestJson)>"> and submit it from the browser.',
+    example: 'https://github.com/settings/apps/new',
+  })
+  githubUrl: string;
+
+  @ApiProperty({
+    description:
+      'Short-lived state token (10min TTL, single-use). Returned by GitHub in the callback redirect to correlate the conversion.',
+  })
+  state: string;
+}
+
+export class ValidatePatDto {
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({
+    description: 'GitHub Personal Access Token to validate (not persisted).',
+  })
+  token: string;
+}
+
+export class PatValidationResultDto {
+  @ApiProperty({ description: 'Whether the token is usable.' })
+  valid: boolean;
+
+  @ApiProperty({
+    description: 'Authenticated GitHub login (if valid).',
+    required: false,
+  })
+  login?: string;
+
+  @ApiProperty({
+    description: 'GitHub user ID (if valid).',
+    required: false,
+  })
+  githubUserId?: string;
+
+  @ApiProperty({
+    description: 'OAuth scopes actually granted to the token (if valid).',
+    required: false,
+    type: [String],
+  })
+  scopes?: string[];
+
+  @ApiProperty({
+    description: 'Required scopes that the token does NOT grant (if valid).',
+    required: false,
+    type: [String],
+  })
+  missingScopes?: string[];
+
+  @ApiProperty({
+    description: 'Error code if validation failed.',
+    enum: [
+      'empty_token',
+      'invalid_token',
+      'sso_required',
+      'github_unreachable',
+    ],
+    required: false,
+  })
+  error?:
+    | 'empty_token'
+    | 'invalid_token'
+    | 'sso_required'
+    | 'github_unreachable';
+
+  @ApiProperty({
+    description: 'Free-text error detail (if validation failed).',
+    required: false,
+  })
+  message?: string;
+}
+
+export class GitHubSetupHealthResponseDto {
+  @ApiProperty({
+    description: 'True when the configured integration is reachable and valid.',
+  })
+  ok: boolean;
+
+  @ApiProperty({
+    description: 'Active auth mode (null when nothing is configured).',
+    enum: GitHubAuthMethod,
+    nullable: true,
+  })
+  mode: GitHubAuthMethod | null;
+
+  @ApiProperty({
+    description:
+      'Mode-specific details. For github_app: appSlug, appId, installationsCount. For pat: note. On failure: error, message, status.',
+    type: Object,
+  })
+  details: Record<string, unknown>;
 }
