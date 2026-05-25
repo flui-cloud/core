@@ -5,10 +5,8 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  Res,
   Req,
   Query,
-  Logger,
   BadRequestException,
 } from '@nestjs/common';
 import {
@@ -18,87 +16,44 @@ import {
   ApiQuery,
   ApiResponse,
 } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import { GitHubOAuthService } from '../services/github-oauth.service';
 import { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.interface';
 import {
-  GitHubOAuthInitiateResponseDto,
-  GitHubOAuthCallbackDto,
   GitHubOAuthStatusResponseDto,
   ConnectPatDto,
   ConnectPatResponseDto,
   PublicRepoSearchResultDto,
   PublicRepoBranchDto,
+  ValidatePatDto,
+  PatValidationResultDto,
 } from '../dto/github-oauth.dto';
 
 @ApiTags('GitHub OAuth')
 @ApiBearerAuth()
 @Controller('repositories/github')
 export class GitHubOAuthController {
-  private readonly logger = new Logger(GitHubOAuthController.name);
-
   constructor(private readonly githubOAuthService: GitHubOAuthService) {}
 
-  @Get('connect')
+  @Post('validate-pat')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Initiate GitHub OAuth flow',
+    summary: 'Validate a Personal Access Token without persisting it',
     description:
-      'Returns a GitHub authorization URL. Only available when setup method is oauth_app.',
+      'Calls GitHub /user with the supplied token and returns who it ' +
+      'authenticated as, which scopes were actually granted, and which ' +
+      'required scopes are missing. The token is never stored. Use this ' +
+      'before POST /connect-pat to give the user immediate feedback.',
   })
   @ApiResponse({
     status: 200,
-    description: 'OAuth URL generated',
-    type: GitHubOAuthInitiateResponseDto,
+    description: 'Validation result',
+    type: PatValidationResultDto,
   })
-  @ApiResponse({
-    status: 503,
-    description: 'GitHub integration not configured',
-  })
-  async connect(@Req() req: Request): Promise<GitHubOAuthInitiateResponseDto> {
-    const { userId } = req.user as AuthenticatedUser;
-    return this.githubOAuthService.initiateOAuth(userId);
-  }
-
-  @Get('callback')
-  @ApiOperation({ summary: 'Handle GitHub OAuth callback' })
-  @ApiResponse({
-    status: 302,
-    description: 'Redirect to frontend after successful authentication',
-  })
-  @ApiResponse({ status: 400, description: 'Invalid callback parameters' })
-  async callback(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const query = req.query as unknown as GitHubOAuthCallbackDto;
-
-    if (query.error) {
-      this.logger.warn(
-        `GitHub OAuth error: ${query.error} - ${query.error_description}`,
-      );
-      return res.redirect(
-        `${this.getFrontendUrl()}/repositories?error=${encodeURIComponent(query.error_description || query.error)}`,
-      );
-    }
-
-    if (!query.code || !query.state) {
-      throw new BadRequestException(
-        `Missing required OAuth parameter: ${query.code ? 'state' : 'code'}`,
-      );
-    }
-
-    try {
-      const result = await this.githubOAuthService.handleCallback(
-        query.code,
-        query.state,
-      );
-      this.logger.log(`OAuth callback successful for user ${result.userId}`);
-      return res.redirect(
-        `${this.getFrontendUrl()}/repositories?connected=true`,
-      );
-    } catch (error) {
-      this.logger.error(`OAuth callback failed: ${error.message}`, error.stack);
-      return res.redirect(
-        `${this.getFrontendUrl()}/repositories?error=${encodeURIComponent(error.message)}`,
-      );
-    }
+  async validatePat(
+    @Body() dto: ValidatePatDto,
+  ): Promise<PatValidationResultDto> {
+    return this.githubOAuthService.validatePat(dto.token);
   }
 
   @Post('connect-pat')
@@ -217,9 +172,5 @@ export class GitHubOAuthController {
       throw new BadRequestException('Query parameter "repo" is required');
     }
     return this.githubOAuthService.getPublicRepoBranches(repo);
-  }
-
-  private getFrontendUrl(): string {
-    return process.env.FRONTEND_URL || 'http://localhost:4200';
   }
 }

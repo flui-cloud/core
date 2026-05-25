@@ -2,7 +2,7 @@ import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import * as http from 'node:http';
-import { ApiClient } from '../../lib/api-client';
+import { ApiClient, ApiError } from '../../lib/api-client';
 import { ConfigStorage } from '../../lib/config-storage';
 import {
   findFreeCallbackPort,
@@ -77,7 +77,7 @@ export default class IntegrationConnect extends Command {
       spinner.stop();
     } catch (error: unknown) {
       spinner.fail('Failed to get install URL');
-      console.log(chalk.red(`  ${(error as Error).message}`));
+      this.handleInstallUrlError(error, apiUrl);
       this.exit(1);
     }
 
@@ -149,6 +149,36 @@ export default class IntegrationConnect extends Command {
 
     console.log(chalk.red(`\n  ✖ Connection failed: ${result.error}\n`));
     this.exit(1);
+  }
+
+  private handleInstallUrlError(error: unknown, apiUrl: string): void {
+    const isNotConfigured =
+      error instanceof ApiError &&
+      (error.statusCode === 400 ||
+        error.statusCode === 404 ||
+        error.statusCode === 503) &&
+      /not configured|callback url|client_id|not yet configured/i.test(
+        error.message,
+      );
+
+    if (!isNotConfigured) {
+      console.log(chalk.red(`  ${(error as Error).message}`));
+      return;
+    }
+
+    const dashboardHint = apiUrl.replace(/\/api(\/v1)?$/, '');
+    console.log('');
+    console.log(
+      chalk.yellow(
+        "  This Flui instance doesn't have a GitHub integration configured yet.",
+      ),
+    );
+    console.log('');
+    console.log(`  Run: ${chalk.cyan('flui integration setup github')}`);
+    console.log(
+      chalk.dim(`  Or visit: ${dashboardHint}/apps/repositories/github-setup`),
+    );
+    console.log('');
   }
 
   private waitForCallback(port: number): Promise<CallbackResult> {

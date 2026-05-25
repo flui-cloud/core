@@ -12,6 +12,8 @@ import * as path from 'node:path';
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
 import { GitHubIntegrationConfigEntity } from '../entities/github-integration-config.entity';
+import { GithubUserTokenEntity } from '../entities/github-user-token.entity';
+import { GitHubAppInstallationEntity } from '../entities/github-app-installation.entity';
 import { GitHubAuthMethod } from '../enums/github-auth-method.enum';
 import { EncryptionService } from '../../shared/encryption/services/encryption.service';
 
@@ -22,6 +24,10 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
   constructor(
     @InjectRepository(GitHubIntegrationConfigEntity)
     private readonly configRepo: Repository<GitHubIntegrationConfigEntity>,
+    @InjectRepository(GithubUserTokenEntity)
+    private readonly userTokenRepo: Repository<GithubUserTokenEntity>,
+    @InjectRepository(GitHubAppInstallationEntity)
+    private readonly installationRepo: Repository<GitHubAppInstallationEntity>,
     private readonly configService: ConfigService,
     private readonly encryptionService: EncryptionService,
   ) {}
@@ -36,28 +42,6 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
       // Row already present: top up missing client credentials from env so
       // adding GITHUB_(APP_)CLIENT_ID/SECRET after first boot takes effect.
       await this.topUpClientCredentialsFromEnv(existing);
-      return;
-    }
-
-    const clientId = this.configService.get<string>('GITHUB_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('GITHUB_CLIENT_SECRET');
-    const callbackUrl = this.configService.get<string>(
-      'GITHUB_OAUTH_CALLBACK_URL',
-    );
-
-    if (clientId && clientSecret && callbackUrl) {
-      this.logger.log(
-        'Migrating GitHub OAuth config from environment variables to database',
-      );
-      await this.configRepo.save(
-        this.configRepo.create({
-          authMethod: GitHubAuthMethod.OAUTH_APP,
-          clientIdEncrypted: this.encryptionService.encrypt(clientId),
-          clientSecretEncrypted: this.encryptionService.encrypt(clientSecret),
-          callbackUrl,
-          isConfigured: true,
-        }),
-      );
       return;
     }
 
@@ -122,18 +106,36 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
     }
   }
 
+  private envClientId(): string | null {
+    return (
+      this.configService.get<string>('GITHUB_APP_CLIENT_ID') ??
+      this.configService.get<string>('GITHUB_CLIENT_ID') ??
+      null
+    );
+  }
+
+  private envClientSecret(): string | null {
+    return (
+      this.configService.get<string>('GITHUB_APP_CLIENT_SECRET') ??
+      this.configService.get<string>('GITHUB_CLIENT_SECRET') ??
+      null
+    );
+  }
+
+  private envCallbackUrl(): string | null {
+    return (
+      this.configService.get<string>('GITHUB_APP_CALLBACK_URL') ??
+      this.configService.get<string>('GITHUB_OAUTH_CALLBACK_URL') ??
+      null
+    );
+  }
+
   private async topUpClientCredentialsFromEnv(
     existing: GitHubIntegrationConfigEntity,
   ): Promise<void> {
-    const envClientId =
-      this.configService.get<string>('GITHUB_APP_CLIENT_ID') ??
-      this.configService.get<string>('GITHUB_CLIENT_ID');
-    const envClientSecret =
-      this.configService.get<string>('GITHUB_APP_CLIENT_SECRET') ??
-      this.configService.get<string>('GITHUB_CLIENT_SECRET');
-    const envCallbackUrl =
-      this.configService.get<string>('GITHUB_APP_CALLBACK_URL') ??
-      this.configService.get<string>('GITHUB_OAUTH_CALLBACK_URL');
+    const envClientId = this.envClientId();
+    const envClientSecret = this.envClientSecret();
+    const envCallbackUrl = this.envCallbackUrl();
 
     let dirty = false;
     if (envClientId && !existing.clientIdEncrypted) {
@@ -168,19 +170,23 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
 
   async getClientId(): Promise<string | null> {
     const config = await this.getConfig();
-    if (!config?.clientIdEncrypted) return null;
-    return this.encryptionService.decrypt(config.clientIdEncrypted);
+    if (config?.clientIdEncrypted) {
+      return this.encryptionService.decrypt(config.clientIdEncrypted);
+    }
+    return this.envClientId();
   }
 
   async getClientSecret(): Promise<string | null> {
     const config = await this.getConfig();
-    if (!config?.clientSecretEncrypted) return null;
-    return this.encryptionService.decrypt(config.clientSecretEncrypted);
+    if (config?.clientSecretEncrypted) {
+      return this.encryptionService.decrypt(config.clientSecretEncrypted);
+    }
+    return this.envClientSecret();
   }
 
   async getCallbackUrl(): Promise<string | null> {
     const config = await this.getConfig();
-    return config?.callbackUrl ?? null;
+    return config?.callbackUrl ?? this.envCallbackUrl();
   }
 
   async getSetupStatus(): Promise<{
@@ -199,32 +205,6 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
         ? { appSlug: config.appSlug }
         : {}),
     };
-  }
-
-  async configureOAuth(
-    clientId: string,
-    clientSecret: string,
-    callbackUrl: string,
-  ): Promise<void> {
-    await this.validateOAuthCredentials(clientId, clientSecret);
-
-    const existing = await this.configRepo.findOne({ where: {} });
-
-    const data = {
-      authMethod: GitHubAuthMethod.OAUTH_APP,
-      clientIdEncrypted: this.encryptionService.encrypt(clientId),
-      clientSecretEncrypted: this.encryptionService.encrypt(clientSecret),
-      callbackUrl,
-      isConfigured: true,
-    };
-
-    if (existing) {
-      await this.configRepo.save({ ...existing, ...data });
-    } else {
-      await this.configRepo.save(this.configRepo.create(data));
-    }
-
-    this.logger.log('GitHub OAuth App configuration saved');
   }
 
   async configurePatMode(): Promise<void> {
@@ -310,8 +290,14 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
   }
 
   async resetConfig(): Promise<void> {
-    await this.configRepo.delete({});
-    this.logger.log('GitHub integration config reset');
+    // delete({}) is rejected by TypeORM as an unsafe blanket delete; build the
+    // query explicitly with no WHERE so it removes every row in the table.
+    await this.userTokenRepo.createQueryBuilder().delete().execute();
+    await this.installationRepo.createQueryBuilder().delete().execute();
+    await this.configRepo.createQueryBuilder().delete().execute();
+    this.logger.log(
+      'GitHub integration config + user tokens + installations cleared',
+    );
   }
 
   private async validateGitHubAppCredentials(
@@ -333,36 +319,76 @@ export class GitHubIntegrationConfigService implements OnModuleInit {
     }
   }
 
-  private async validateOAuthCredentials(
-    clientId: string,
-    clientSecret: string,
-  ): Promise<void> {
-    try {
-      const octokit = new Octokit({
-        auth: {
-          clientId,
-          clientSecret,
-        },
-      });
-      await octokit.apps.checkToken({
-        client_id: clientId,
-        access_token: 'dummy',
-      });
-    } catch (error) {
-      if (
-        error.status === 422 ||
-        error.message?.includes('Unprocessable Entity')
-      ) {
-        return;
-      }
-      if (error.status === 404) {
-        throw new BadRequestException(
-          'Invalid GitHub OAuth App credentials. Check your Client ID and Client Secret.',
-        );
-      }
-      this.logger.warn(
-        `OAuth credential validation returned: ${error.status} ${error.message}`,
-      );
+  async health(): Promise<{
+    ok: boolean;
+    mode: GitHubAuthMethod | null;
+    details: Record<string, unknown>;
+  }> {
+    const config = await this.getConfig();
+    if (!config) {
+      return {
+        ok: false,
+        mode: null,
+        details: { error: 'not_configured' },
+      };
     }
+
+    if (config.authMethod === GitHubAuthMethod.PAT) {
+      return {
+        ok: true,
+        mode: GitHubAuthMethod.PAT,
+        details: {
+          note: 'PAT mode uses per-user credentials. Check GET /repositories/github/status for the current user.',
+        },
+      };
+    }
+
+    if (config.authMethod === GitHubAuthMethod.GITHUB_APP) {
+      const appId = config.appId;
+      const privateKey = config.privateKeyEncrypted
+        ? this.encryptionService.decrypt(config.privateKeyEncrypted)
+        : null;
+      if (!appId || !privateKey) {
+        return {
+          ok: false,
+          mode: GitHubAuthMethod.GITHUB_APP,
+          details: { error: 'missing_app_id_or_private_key' },
+        };
+      }
+      try {
+        const auth = createAppAuth({ appId, privateKey });
+        const { token } = await auth({ type: 'app' });
+        const octokit = new Octokit({ auth: token });
+        const appInfo = await octokit.apps.getAuthenticated();
+        const installations = await octokit.apps.listInstallations({
+          per_page: 100,
+        });
+        return {
+          ok: true,
+          mode: GitHubAuthMethod.GITHUB_APP,
+          details: {
+            appSlug: appInfo.data?.slug ?? config.appSlug,
+            appId: appInfo.data?.id ?? appId,
+            installationsCount: installations.data.length,
+          },
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          mode: GitHubAuthMethod.GITHUB_APP,
+          details: {
+            error: 'github_unreachable_or_invalid_credentials',
+            message: error.message,
+            status: error.status,
+          },
+        };
+      }
+    }
+
+    return {
+      ok: false,
+      mode: config.authMethod,
+      details: { error: 'unknown_mode' },
+    };
   }
 }

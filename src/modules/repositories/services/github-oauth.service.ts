@@ -14,17 +14,12 @@ import { GitHubAuthMethod } from '../enums/github-auth-method.enum';
 import { GitHubIntegrationConfigService } from './github-integration-config.service';
 import { GitHubAppService } from './github-app.service';
 import {
-  GitHubOAuthInitiateResponseDto,
   GitHubOAuthStatusResponseDto,
   ConnectPatResponseDto,
   PublicRepoSearchResultDto,
   PublicRepoBranchDto,
+  PatValidationResultDto,
 } from '../dto/github-oauth.dto';
-
-interface OAuthStateData {
-  userId: string;
-  timestamp: number;
-}
 
 @Injectable()
 export class GitHubOAuthService {
@@ -34,14 +29,12 @@ export class GitHubOAuthService {
     'user:email',
     'admin:repo_hook',
     'write:packages',
-    // Required for `flui deploy --no-build` GHCR latest-tag auto-discovery.
-    // Note: GitHub claims `write:packages` includes read access, but in practice
-    // listing package versions returns 404 without this explicit scope.
+    // `read:packages` is required despite `write:packages`: GitHub returns 404
+    // on `GET /user/packages` without it (used by deploy `--no-build`).
     'read:packages',
+    'delete:packages',
     'workflow',
   ];
-  private readonly stateCache = new Map<string, OAuthStateData>();
-  private readonly STATE_EXPIRY_MS = 5 * 60 * 1000;
 
   constructor(
     private readonly integrationConfig: GitHubIntegrationConfigService,
@@ -49,151 +42,7 @@ export class GitHubOAuthService {
     private readonly credentialsRepository: RepositoryCredentialsRepository,
     private readonly encryptionService: EncryptionService,
     private readonly configService: ConfigService,
-  ) {
-    this.startStateCacheCleaner();
-  }
-
-  private startStateCacheCleaner(): void {
-    setInterval(() => {
-      const now = Date.now();
-      for (const [state, data] of this.stateCache.entries()) {
-        if (now - data.timestamp > this.STATE_EXPIRY_MS) {
-          this.stateCache.delete(state);
-        }
-      }
-    }, 60 * 1000);
-  }
-
-  async initiateOAuth(userId: string): Promise<GitHubOAuthInitiateResponseDto> {
-    const config = await this.integrationConfig.getConfig();
-
-    if (!config?.isConfigured) {
-      throw new ServiceUnavailableException(
-        'GitHub integration not configured. Complete setup first via POST /repositories/github/setup/oauth',
-      );
-    }
-
-    if (config.authMethod !== GitHubAuthMethod.OAUTH_APP) {
-      throw new BadRequestException(
-        'GitHub is configured in PAT mode. Use POST /repositories/github/connect-pat instead.',
-      );
-    }
-
-    const clientId = this.encryptionService.decrypt(config.clientIdEncrypted);
-    const callbackUrl = config.callbackUrl;
-
-    const state = this.encryptionService.generateRandomToken(32);
-    this.stateCache.set(state, { userId, timestamp: Date.now() });
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: callbackUrl,
-      scope: this.oauthScopes.join(' '),
-      state,
-      allow_signup: 'true',
-    });
-
-    const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
-    this.logger.log(`Initiated OAuth flow for user ${userId}`);
-
-    return { url, state };
-  }
-
-  async handleCallback(
-    code: string,
-    state: string,
-  ): Promise<{ userId: string; credentialId: string }> {
-    const stateData = this.stateCache.get(state);
-
-    if (!stateData) {
-      throw new BadRequestException(
-        'Invalid or expired state token. Please try connecting again.',
-      );
-    }
-
-    const now = Date.now();
-    if (now - stateData.timestamp > this.STATE_EXPIRY_MS) {
-      this.stateCache.delete(state);
-      throw new BadRequestException(
-        'State token expired. Please try connecting again.',
-      );
-    }
-
-    this.stateCache.delete(state);
-
-    const clientId = await this.integrationConfig.getClientId();
-    const clientSecret = await this.integrationConfig.getClientSecret();
-    const callbackUrl = await this.integrationConfig.getCallbackUrl();
-
-    if (!clientId || !clientSecret) {
-      throw new ServiceUnavailableException(
-        'GitHub OAuth App credentials not available.',
-      );
-    }
-
-    try {
-      const tokenResponse = await fetch(
-        'https://github.com/login/oauth/access_token',
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            client_id: clientId,
-            client_secret: clientSecret,
-            code,
-            redirect_uri: callbackUrl,
-          }),
-        },
-      );
-
-      const tokenData = await tokenResponse.json();
-
-      if (tokenData.error) {
-        this.logger.error(
-          `GitHub OAuth error: ${tokenData.error} - ${tokenData.error_description}`,
-        );
-        throw new BadRequestException(
-          `GitHub OAuth failed: ${tokenData.error_description || tokenData.error}`,
-        );
-      }
-
-      const { access_token, scope, token_type } = tokenData;
-
-      const octokit = new Octokit({ auth: access_token });
-      const userInfo = await octokit.users.getAuthenticated();
-
-      await this.credentialsRepository.revokeAllByProvider(
-        stateData.userId,
-        GitProvider.GITHUB,
-      );
-
-      const credential = await this.credentialsRepository.create({
-        userId: stateData.userId,
-        provider: GitProvider.GITHUB,
-        credentialType: GitHubAuthMethod.OAUTH_APP,
-        accessTokenEncrypted: this.encryptionService.encrypt(access_token),
-        scope: scope || this.oauthScopes.join(' '),
-        tokenType: token_type || 'Bearer',
-        githubUserId: userInfo.data.id.toString(),
-        githubUsername: userInfo.data.login,
-        isActive: true,
-      });
-
-      this.logger.log(
-        `GitHub OAuth completed for user ${stateData.userId} (GitHub: ${userInfo.data.login})`,
-      );
-
-      return { userId: stateData.userId, credentialId: credential.id };
-    } catch (error) {
-      this.logger.error(`OAuth callback failed: ${error.message}`, error.stack);
-      throw new BadRequestException(
-        `Failed to complete GitHub authorization: ${error.message}`,
-      );
-    }
-  }
+  ) {}
 
   async connectWithPat(
     userId: string,
@@ -209,7 +58,7 @@ export class GitHubOAuthService {
 
     if (config.authMethod !== GitHubAuthMethod.PAT) {
       throw new BadRequestException(
-        'GitHub is configured in OAuth App mode. Use GET /repositories/github/connect instead.',
+        'GitHub is configured in GitHub App mode. Connect via GET /repositories/github-app/install-url instead.',
       );
     }
 
@@ -301,37 +150,6 @@ export class GitHubOAuthService {
 
   async revokeAccess(userId: string): Promise<void> {
     const credential = await this.getActiveCredential(userId);
-    const accessToken = this.encryptionService.decrypt(
-      credential.accessTokenEncrypted,
-    );
-
-    if (credential.credentialType === GitHubAuthMethod.OAUTH_APP) {
-      try {
-        const clientId = await this.integrationConfig.getClientId();
-        const clientSecret = await this.integrationConfig.getClientSecret();
-
-        if (clientId && clientSecret) {
-          const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
-            'base64',
-          );
-          await fetch(`https://api.github.com/applications/${clientId}/grant`, {
-            method: 'DELETE',
-            headers: {
-              Accept: 'application/vnd.github+json',
-              Authorization: `Basic ${basicAuth}`,
-              'X-GitHub-Api-Version': '2022-11-28',
-            },
-            body: JSON.stringify({ access_token: accessToken }),
-          });
-          this.logger.log(`Revoked GitHub OAuth grant for user ${userId}`);
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to revoke GitHub OAuth grant: ${error.message}`,
-        );
-      }
-    }
-
     await this.credentialsRepository.revoke(credential.id);
     this.logger.log(`Deactivated GitHub credential for user ${userId}`);
   }
@@ -373,14 +191,73 @@ export class GitHubOAuthService {
     required: string[],
   ): Promise<void> {
     const current = await this.getTokenScopes(userId);
-    const missing = required.filter((s) => !current.includes(s));
+    const missing = required.filter((s) => !this.isScopeGranted(s, current));
 
     if (missing.length > 0) {
       throw new BadRequestException(
         `Your GitHub connection is missing the required permission${missing.length > 1 ? 's' : ''}: ` +
           `[${missing.join(', ')}]. ` +
-          `Please re-authorize your GitHub account via GET /repositories/github/connect to grant the new scopes.`,
+          `Re-create your Personal Access Token with the missing scopes and reconnect via POST /repositories/github/connect-pat.`,
       );
+    }
+  }
+
+  // GitHub's scope hierarchy: a parent scope grants its children, but the
+  // `x-oauth-scopes` header only reports what the user literally checked.
+  // Match the granted set against the hierarchy so we don't flag a scope as
+  // missing when a broader one covers it.
+  private isScopeGranted(target: string, granted: string[]): boolean {
+    if (granted.includes(target)) return true;
+    if (target === 'read:packages' && granted.includes('write:packages')) {
+      return true;
+    }
+    if (
+      (target === 'read:repo_hook' || target === 'write:repo_hook') &&
+      granted.includes('admin:repo_hook')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  async validatePat(token: string): Promise<PatValidationResultDto> {
+    if (!token || token.trim().length === 0) {
+      return { valid: false, error: 'empty_token' };
+    }
+
+    try {
+      const octokit = new Octokit({ auth: token });
+      const response = await octokit.users.getAuthenticated();
+      const scopeHeader =
+        (response.headers as Record<string, string>)['x-oauth-scopes'] ?? '';
+      const scopes = scopeHeader
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const missingScopes = this.oauthScopes.filter(
+        (s) => !this.isScopeGranted(s, scopes),
+      );
+      return {
+        valid: true,
+        login: response.data.login,
+        githubUserId: response.data.id.toString(),
+        scopes,
+        missingScopes,
+      };
+    } catch (error) {
+      const status = error?.status;
+      if (status === 401) {
+        return { valid: false, error: 'invalid_token' };
+      }
+      if (status === 403 && /sso|saml/i.test(error?.message ?? '')) {
+        return { valid: false, error: 'sso_required' };
+      }
+      this.logger.warn(`PAT validation failed: ${status} ${error?.message}`);
+      return {
+        valid: false,
+        error: 'github_unreachable',
+        message: error?.message,
+      };
     }
   }
 

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GithubAppUserAuthService } from '../../repositories/services/github-app-user-auth.service';
+import { GitHubIntegrationConfigService } from '../../repositories/services/github-integration-config.service';
 import { ManagementService } from '../../management/services/management.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,7 +12,8 @@ import {
   CredentialsStatusResponseDto,
 } from '../../repositories/dto/ghcr-pat.dto';
 
-const REPOSITORIES_PATH = '/infrastructure/applications/repositories';
+const REPOSITORIES_PATH = '/apps/repositories';
+const GITHUB_SETUP_PATH = '/apps/repositories/github-setup';
 const STATUS_PRIORITY: Record<CredentialStatus, number> = {
   [CredentialStatus.VALID]: 0,
   [CredentialStatus.UNKNOWN_EXPIRY]: 1,
@@ -35,6 +37,7 @@ export class CredentialsStatusService {
   constructor(
     private readonly userAuth: GithubAppUserAuthService,
     private readonly managementService: ManagementService,
+    private readonly integrationConfig: GitHubIntegrationConfigService,
     @InjectRepository(GithubUserTokenEntity)
     private readonly githubTokenRepo: Repository<GithubUserTokenEntity>,
   ) {}
@@ -72,13 +75,17 @@ export class CredentialsStatusService {
     const token = await this.githubTokenRepo.findOne({
       where: { fluiUserId: userId },
     });
+    const instanceConfigured = await this.integrationConfig.isConfigured();
+    const actionUrl = instanceConfigured
+      ? REPOSITORIES_PATH
+      : GITHUB_SETUP_PATH;
     return {
       kind: CredentialKind.GITHUB_APP,
       label: 'GitHub App',
       status: token ? CredentialStatus.VALID : CredentialStatus.MISSING,
       expiresAt: null,
       daysUntilExpiry: null,
-      actionUrl: REPOSITORIES_PATH,
+      actionUrl,
     };
   }
 

@@ -69,13 +69,13 @@ export class GithubAppUserAuthService {
     const clientId = await this.integrationConfig.getClientId();
     if (!clientId) {
       throw new BadRequestException(
-        'GitHub App client_id is not configured — enable "Request user authorization (OAuth) during installation" on the App and save the client credentials via /github/setup/github-app',
+        'GitHub App client_id is not configured. Set GITHUB_APP_CLIENT_ID (or GITHUB_CLIENT_ID) in the API env, or POST /api/v1/repositories/github/setup/github-app with clientId. Enable "Request user authorization (OAuth) during installation" on the App.',
       );
     }
     const callbackUrl = await this.integrationConfig.getCallbackUrl();
     if (!callbackUrl) {
       throw new BadRequestException(
-        'GitHub App callback URL is not configured (callbackUrl missing)',
+        'GitHub App callback URL is not configured. Set GITHUB_APP_CALLBACK_URL (or GITHUB_OAUTH_CALLBACK_URL) in the API env — e.g. http://localhost:3000/api/v1/repositories/github-app/user-callback — or POST /api/v1/repositories/github/setup/github-app with callbackUrl. The same URL must be registered on the GitHub App.',
       );
     }
     const params = new URLSearchParams({
@@ -236,6 +236,7 @@ export class GithubAppUserAuthService {
     connected: boolean;
     login?: string;
     installationId?: string | null;
+    installationsCount?: number;
   }> {
     const stored = await this.getValidToken(fluiUserId);
     if (!stored) return { connected: false };
@@ -245,10 +246,12 @@ export class GithubAppUserAuthService {
     } catch {
       return { connected: false };
     }
+    const installationsCount = await this.installationRepo.count();
     return {
       connected: true,
       login: stored.githubLogin,
       installationId: stored.installationId,
+      installationsCount,
     };
   }
 
@@ -257,40 +260,98 @@ export class GithubAppUserAuthService {
     fluiUserId: string,
     login: string,
   ): Promise<number | null> {
+    const installations = await this.persistAccessibleInstallations(
+      octokit,
+      fluiUserId,
+      login,
+    );
+    return installations[0] ?? null;
+  }
+
+  /**
+   * Re-fetches all GitHub App installations accessible to the user's stored
+   * OAuth token and upserts each into the installations table. Use this to
+   * pick up installations made outside the OAuth flow (e.g. the admin already
+   * authorized the App, then went to GitHub directly to install on a new org).
+   * Webhook-less environments rely on this to keep the local installations
+   * table in sync.
+   */
+  async rescanInstallations(
+    fluiUserId: string,
+  ): Promise<{ count: number; installationIds: number[] }> {
+    const stored = await this.getValidToken(fluiUserId);
+    if (!stored) {
+      throw new BadRequestException(
+        'No active GitHub user token. Connect your GitHub account first.',
+      );
+    }
+    const octokit = new Octokit({ auth: stored.accessToken });
+    const ids = await this.persistAccessibleInstallations(
+      octokit,
+      fluiUserId,
+      stored.githubLogin,
+    );
+
+    if (ids.length > 0 && !stored.installationId) {
+      await this.tokenRepo.update(
+        { fluiUserId },
+        { installationId: String(ids[0]) },
+      );
+    }
+    return { count: ids.length, installationIds: ids };
+  }
+
+  private async persistAccessibleInstallations(
+    octokit: Octokit,
+    fluiUserId: string,
+    login: string,
+  ): Promise<number[]> {
     try {
       const { data } =
         await octokit.apps.listInstallationsForAuthenticatedUser();
-      const first = data.installations?.[0];
-      if (!first) return null;
-
-      const existing = await this.installationRepo.findOne({
-        where: { installationId: first.id },
-      });
-      if (!existing) {
-        await this.installationRepo.save(
-          this.installationRepo.create({
-            installationId: first.id,
-            accountLogin:
-              (first.account as { login?: string })?.login?.toLowerCase() ??
-              login.toLowerCase(),
-            accountType:
-              ((first.account as { type?: string })?.type as
-                | 'User'
-                | 'Organization') ?? 'User',
+      const found = data.installations ?? [];
+      const persistedIds: number[] = [];
+      for (const inst of found) {
+        const accountLogin =
+          (inst.account as { login?: string })?.login?.toLowerCase() ??
+          login.toLowerCase();
+        const accountType =
+          ((inst.account as { type?: string })?.type as
+            | 'User'
+            | 'Organization') ?? 'User';
+        const existing = await this.installationRepo.findOne({
+          where: { installationId: inst.id },
+        });
+        if (existing) {
+          await this.installationRepo.save({
+            ...existing,
+            accountLogin,
+            accountType,
             userId: fluiUserId,
-            repositorySelection: first.repository_selection ?? 'all',
-          }),
-        );
-        this.logger.log(
-          `Discovered GitHub App installation ${first.id} for user ${fluiUserId} (login=${login}) via OAuth — persisted`,
-        );
+            repositorySelection: inst.repository_selection ?? 'all',
+          });
+        } else {
+          await this.installationRepo.save(
+            this.installationRepo.create({
+              installationId: inst.id,
+              accountLogin,
+              accountType,
+              userId: fluiUserId,
+              repositorySelection: inst.repository_selection ?? 'all',
+            }),
+          );
+          this.logger.log(
+            `Discovered GitHub App installation ${inst.id} for user ${fluiUserId} (account=${accountLogin})`,
+          );
+        }
+        persistedIds.push(inst.id);
       }
-      return first.id;
+      return persistedIds;
     } catch (err) {
       this.logger.warn(
-        `Failed to discover GitHub App installations for user ${fluiUserId}: ${(err as Error).message}`,
+        `Failed to list GitHub App installations for user ${fluiUserId}: ${(err as Error).message}`,
       );
-      return null;
+      return [];
     }
   }
 

@@ -48,7 +48,7 @@ export class RepositoryCredentialEntity {
     name: 'credential_type',
     type: 'enum',
     enum: GitHubAuthMethod,
-    default: GitHubAuthMethod.OAUTH_APP,
+    default: GitHubAuthMethod.GITHUB_APP,
   })
   credentialType: GitHubAuthMethod;
 
