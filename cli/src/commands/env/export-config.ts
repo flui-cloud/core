@@ -392,27 +392,43 @@ export default class EnvExportConfig extends Command {
       'assets',
       'config.json',
     );
+    const examplePath = path.join(
+      absoluteDashboardPath,
+      'src',
+      'assets',
+      'config.example.json',
+    );
 
     const spinner = ora(`Updating dashboard config (${configPath})...`).start();
 
-    if (!fs.existsSync(configPath)) {
-      spinner.warn(
-        `Dashboard config not found at ${configPath} — skipping. Adjust dashboardPath or pass --no-dashboard.`,
-      );
-      return;
-    }
-
     let current: Record<string, unknown> = {};
-    try {
-      current = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    } catch (err) {
-      spinner.fail(
-        `Dashboard config.json is not valid JSON (${(err as Error).message}) — skipping`,
+    if (fs.existsSync(configPath)) {
+      try {
+        current = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      } catch (err) {
+        spinner.fail(
+          `Dashboard config.json is not valid JSON (${(err as Error).message}) — skipping`,
+        );
+        return;
+      }
+    } else if (fs.existsSync(examplePath)) {
+      try {
+        current = JSON.parse(fs.readFileSync(examplePath, 'utf-8'));
+        spinner.info(
+          `config.json missing — seeded from ${path.basename(examplePath)}`,
+        );
+      } catch (err) {
+        spinner.warn(
+          `config.example.json is not valid JSON (${(err as Error).message}) — starting from empty config`,
+        );
+      }
+    } else {
+      spinner.info(
+        'config.json and config.example.json both missing — creating from scratch',
       );
-      return;
     }
 
-    if (opts.backup) {
+    if (opts.backup && fs.existsSync(configPath)) {
       const timestamp = new Date()
         .toISOString()
         .replaceAll(':', '-')
