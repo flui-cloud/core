@@ -11,6 +11,7 @@
 </p>
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
+  <a href="https://docs.flui.cloud"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.flui.cloud-3DA5FF"></a>
   <a href="https://github.com/flui-cloud/core/actions/workflows/docker-publish.yml"><img alt="Build" src="https://github.com/flui-cloud/core/actions/workflows/docker-publish.yml/badge.svg"></a>
   <a href="https://github.com/flui-cloud/core/actions/workflows/security.yml"><img alt="Security scan" src="https://github.com/flui-cloud/core/actions/workflows/security.yml/badge.svg"></a>
   <a href="https://www.npmjs.com/package/@flui-cloud/cli"><img alt="npm" src="https://img.shields.io/npm/v/@flui-cloud/cli.svg"></a>
