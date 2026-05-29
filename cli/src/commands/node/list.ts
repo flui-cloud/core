@@ -32,9 +32,14 @@ export default class NodeList extends Command {
     const spinner = ora('Fetching nodes...').start();
 
     try {
-      const { id: clusterId } = await resolveCluster(flags.cluster);
+      const { id: clusterId, entity } = await resolveCluster(flags.cluster);
       const service = await CliNodeService.create(clusterId);
       const nodes = await service.listNodes();
+
+      const isControlCluster =
+        entity?.clusterType === 'control' ||
+        entity?.clusterType === 'observability';
+      const masterProtected = !!entity?.metadata?.masterProtection;
 
       spinner.stop();
 
@@ -69,9 +74,13 @@ export default class NodeList extends Command {
         const statusPadded = (node.status || 'unknown').padEnd(12);
         const statusColored = this.colorStatus(statusPadded);
         const ip = (node.ipAddress || '-').padEnd(18);
+        const taint =
+          node.nodeType === 'master' && masterProtected
+            ? chalk.yellow('  🔒 control-plane:NoSchedule')
+            : '';
 
         console.log(
-          `  ${node.id.padEnd(38)} ${roleColored} ${statusColored} ${ip} ${name}`,
+          `  ${node.id.padEnd(38)} ${roleColored} ${statusColored} ${ip} ${name}${taint}`,
         );
       }
 
@@ -82,12 +91,29 @@ export default class NodeList extends Command {
           `  ${nodes.length} node${nodes.length === 1 ? '' : 's'} total (1 master, ${workers} worker${workers === 1 ? '' : 's'})`,
         ),
       );
+
+      if (isControlCluster) {
+        console.log(
+          chalk.dim('  Master protection: ') +
+            this.masterProtectionLabel(workers, masterProtected),
+        );
+      }
       console.log('');
     } catch (error: any) {
       spinner.fail('Failed to fetch nodes');
       console.log(chalk.red(`\n  Error: ${error.message}\n`));
       this.exit(1);
     }
+  }
+
+  private masterProtectionLabel(
+    workers: number,
+    protectedFlag: boolean,
+  ): string {
+    if (workers === 0) return chalk.dim('n/a (single-node)');
+    return protectedFlag
+      ? chalk.green('auto (master tainted)')
+      : chalk.yellow('off');
   }
 
   private colorStatus(status: string): string {

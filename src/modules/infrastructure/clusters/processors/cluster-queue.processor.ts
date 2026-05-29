@@ -22,6 +22,7 @@ import {
   ClusterEntity,
   ClusterStatus,
   ClusterType,
+  isControlClusterType,
 } from '../entities/cluster.entity';
 import { ClusterNodeEntity, NodeStatus } from '../entities/cluster-node.entity';
 import {
@@ -423,6 +424,9 @@ export class ClusterQueueProcessor {
 
         // Post-creation hook: Register in Grafana if this is a workload cluster
         await this.registerClusterInGrafana(cluster);
+
+        // Master-protection: a control cluster created multi-node starts protected.
+        await this.maybeProtectMasterOnScaleOut(cluster, 1, workerCount);
 
         await this.updateOperationStep(operationId, 4, 100, {
           status: OperationStatus.COMPLETED,
@@ -1619,6 +1623,14 @@ export class ClusterQueueProcessor {
         message: 'Workers joined K3s cluster',
       });
 
+      // Master-protection: a control cluster crossing single-node → multi-node
+      // gets its master tainted so new pods land on the fresh worker(s).
+      await this.maybeProtectMasterOnScaleOut(
+        cluster,
+        preCluster?.nodes?.length ?? 1,
+        created.length,
+      );
+
       // STEP 3 - FINALIZE
       await this.clusterRepository.update(clusterId, {
         nodeCount: (cluster.nodeCount || 0) + created.length,
@@ -1936,6 +1948,13 @@ export class ClusterQueueProcessor {
         message: 'K3s node removal step done',
       });
 
+      // Master-protection: if this was the last worker, the control cluster is
+      // single-node again — untaint the master so workloads can schedule on it.
+      await this.maybeUntaintMasterOnScaleIn(
+        cluster,
+        (cluster.nodes?.length ?? 1) - 1,
+      );
+
       // STEP 4 - FINALIZE
       await this.updateOperationStep(operationId, 4, 100, {
         status: OperationStatus.COMPLETED,
@@ -2039,6 +2058,103 @@ export class ClusterQueueProcessor {
         `Cordon failed for ${nodeName}: ${(e as Error).message} — continuing`,
       );
     }
+  }
+
+  /**
+   * Applies or removes the standard control-plane taint on the master(s) of a
+   * control cluster, so new pods land on workers once the cluster scales out.
+   * Best-effort: a failed taint must not fail the scaling operation.
+   */
+  private async setMasterTaint(
+    masterIp: string | null | undefined,
+    bootstrapPrivateKey: string | null,
+    apply: boolean,
+  ): Promise<boolean> {
+    if (!bootstrapPrivateKey || !masterIp) {
+      this.logger.warn(
+        '[master-protection] skipped: master IP or bootstrap key unavailable',
+      );
+      return false;
+    }
+    const taint = 'node-role.kubernetes.io/control-plane';
+    const cmd = apply
+      ? `kubectl taint nodes -l ${taint} ${taint}=:NoSchedule --overwrite`
+      : `kubectl taint nodes -l ${taint} ${taint}:NoSchedule- 2>/dev/null || true`;
+    try {
+      await this.nativeSsh.execCommand(
+        masterIp,
+        'root',
+        bootstrapPrivateKey,
+        cmd,
+        30000,
+      );
+      return true;
+    } catch (e) {
+      this.logger.warn(
+        `[master-protection] taint ${apply ? 'apply' : 'remove'} failed: ${(e as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Drives the master-protection state machine for a control cluster: taints the
+   * master when scaling to multi-node, untaints it when returning to single-node,
+   * persists the state on the cluster, and logs the action loudly.
+   */
+  private async applyMasterProtection(
+    cluster: ClusterEntity,
+    apply: boolean,
+  ): Promise<void> {
+    const key = await this.loadBootstrapPrivateKey(
+      cluster.bootstrapKeyId,
+      cluster.masterIpAddress,
+    );
+    const ok = await this.setMasterTaint(cluster.masterIpAddress, key, apply);
+    if (!ok) return;
+
+    // Re-fetch without relations so save() doesn't cascade the (possibly stale) nodes.
+    const fresh = await this.clusterRepository.findOne({
+      where: { id: cluster.id },
+    });
+    if (fresh) {
+      fresh.metadata = { ...fresh.metadata, masterProtection: apply };
+      await this.clusterRepository.save(fresh);
+    }
+
+    if (apply) {
+      this.logger.warn(
+        `[master-protection] Master of control cluster ${cluster.name} tainted ` +
+          `(control-plane:NoSchedule). New pods will schedule on workers. ` +
+          `Disable with 'flui env set-master-protection off'.`,
+      );
+    } else {
+      this.logger.warn(
+        `[master-protection] Master of control cluster ${cluster.name} untainted ` +
+          `— cluster is single-node again, workloads can schedule on the master.`,
+      );
+    }
+  }
+
+  /** Taints the master when a control cluster crosses single-node → multi-node. */
+  private async maybeProtectMasterOnScaleOut(
+    cluster: ClusterEntity,
+    preNodeCount: number,
+    addedCount: number,
+  ): Promise<void> {
+    if (!isControlClusterType(cluster.clusterType)) return;
+    if (preNodeCount > 1 || addedCount <= 0) return;
+    await this.applyMasterProtection(cluster, true);
+  }
+
+  /** Untaints the master when a control cluster returns to single-node. */
+  private async maybeUntaintMasterOnScaleIn(
+    cluster: ClusterEntity,
+    remainingNodeCount: number,
+  ): Promise<void> {
+    if (!isControlClusterType(cluster.clusterType)) return;
+    if (remainingNodeCount > 1) return;
+    await this.applyMasterProtection(cluster, false);
   }
 
   private async markOperationFailed(
