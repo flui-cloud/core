@@ -519,6 +519,7 @@ export class ClusterOrchestrationService {
       kubeconfig = await this.fetchKubeconfigFromMaster(
         node.ipAddress,
         bootstrapKey.privateKey,
+        node.privateIp ?? node.ipAddress,
       );
     } catch (err) {
       this.logger.error(
@@ -1469,6 +1470,7 @@ export class ClusterOrchestrationService {
   private async fetchKubeconfigFromMaster(
     masterIp: string,
     bootstrapPrivateKey: string,
+    serverIp: string,
   ): Promise<string> {
     const maxAttempts = 20;
     const delayMs = 15000;
@@ -1490,8 +1492,8 @@ export class ClusterOrchestrationService {
           throw new Error('Invalid kubeconfig received');
         }
 
-        // Replace loopback address with the public master IP
-        const kubeconfig = raw.replaceAll('127.0.0.1', masterIp);
+        // private VNet IP, not public: the K3s API (6443) is never public
+        const kubeconfig = raw.replaceAll('127.0.0.1', serverIp);
         this.logger.log('✅ Kubeconfig fetched successfully from master');
         return kubeconfig;
       } catch (err) {

@@ -16,6 +16,8 @@ import {
 import { CreateClusterDto } from '../dto/create-cluster.dto';
 import { EncryptionService } from '../../../shared/encryption/services/encryption.service';
 import { ClusterFirewallIntegrationService } from './cluster-firewall-integration.service';
+import { CapabilitiesProviderFactory } from '../../../providers/core/factories/capabilities-provider.factory';
+import { sanitizeApiServerFirewallRules } from '../../firewalls/templates/firewall-rules.template';
 import { getOperationSteps } from '../../operations/helpers/operation-steps.helper';
 import { CreateClusterJobData } from '../clusters.service';
 import { VNetSubnetEntity } from '../../vnets/entities/vnet-subnet.entity';
@@ -42,6 +44,7 @@ export class ClusterCreationService {
     @InjectQueue('infrastructure') private readonly infrastructureQueue: Queue,
     private readonly encryptionService: EncryptionService,
     private readonly clusterFirewallIntegrationService: ClusterFirewallIntegrationService,
+    private readonly capabilitiesFactory: CapabilitiesProviderFactory,
   ) {}
 
   /**
@@ -82,6 +85,8 @@ export class ClusterCreationService {
     this.logger.log(
       `Cluster ${dto.name} attached to environment subnet ${envSubnet.id} (${envSubnet.ipRange})`,
     );
+
+    await this.enforceProviderPolicies(dto, clusterType, !!envSubnet);
 
     // Resolve nip.io hostname token: when running in IP mode, every cluster gets
     // a unique token segment so the LE domain set differs between recreations,
@@ -144,7 +149,10 @@ export class ClusterCreationService {
     // observability ↔ workload metrics traffic flows over the environment VNet.
     let providerFirewallId: string | null = null;
     try {
-      const desiredRules = dto.firewallRules || [];
+      const desiredRules = sanitizeApiServerFirewallRules(
+        dto.firewallRules || [],
+        envSubnet.ipRange,
+      );
 
       providerFirewallId =
         await this.clusterFirewallIntegrationService.createAndReconcileFirewall(
@@ -217,5 +225,44 @@ export class ClusterCreationService {
     );
 
     return savedOperation;
+  }
+
+  private async enforceProviderPolicies(
+    dto: CreateClusterDto,
+    clusterType: ClusterType,
+    hasEnvSubnet: boolean,
+  ): Promise<void> {
+    const capabilities = this.capabilitiesFactory
+      .getCapabilitiesService(dto.provider)
+      .getStaticCapabilities();
+
+    if (capabilities.vnetRequired && !dto.vnetConfig && !hasEnvSubnet) {
+      throw new BadRequestException({
+        code: 'VNET_REQUIRED',
+        message: `Provider '${dto.provider}' requires a VNet/Subnet, but none was supplied or registered.`,
+        details: { provider: dto.provider },
+      });
+    }
+
+    if (
+      clusterType !== ClusterType.WORKLOAD ||
+      capabilities.crossClusterAllowed
+    ) {
+      return;
+    }
+
+    const control = await this.clusterRepository.findOne({
+      where: { clusterType: ClusterType.OBSERVABILITY },
+    });
+    if (control && control.provider !== dto.provider) {
+      throw new BadRequestException({
+        code: 'CROSS_PROVIDER_NOT_ALLOWED',
+        message: `Workload provider '${dto.provider}' must match the control cluster provider '${control.provider}'.`,
+        details: {
+          workloadProvider: dto.provider,
+          controlProvider: control.provider,
+        },
+      });
+    }
   }
 }

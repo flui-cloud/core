@@ -165,4 +165,18 @@ export class ProviderCapabilitiesDto {
     description: 'VNet topology info — null when privateNetworking is false',
   })
   vnetTopology: VNetTopologyDto | null;
+
+  @ApiProperty({
+    description:
+      'Whether a VNet/Subnet must be selected when creating a cluster on this provider',
+    example: true,
+  })
+  vnetRequired: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether a workload may target a provider different from the control cluster provider',
+    example: false,
+  })
+  crossClusterAllowed: boolean;
 }

@@ -167,6 +167,17 @@ export function validateFirewallRules(rules: FirewallRule[]): {
   };
 }
 
+export function sanitizeApiServerFirewallRules(
+  rules: FirewallRule[],
+  subnetCidr: string,
+): FirewallRule[] {
+  return rules.map((rule) =>
+    rule.direction === 'in' && rule.protocol === 'tcp' && rule.port === '6443'
+      ? { ...rule, sourceIps: [subnetCidr] }
+      : rule,
+  );
+}
+
 function isValidCidr(cidr: string): boolean {
   const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
   const ipv6Regex = /^([0-9a-fA-F:]+)\/\d{1,3}$/;

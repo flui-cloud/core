@@ -236,6 +236,8 @@ export class ScalewayCapabilitiesService
         vnetIpRange: { minPrefix: 20, maxPrefix: 28 },
         subnetIpRange: { minPrefix: 20, maxPrefix: 28 },
       },
+      vnetRequired: true,
+      crossClusterAllowed: false,
     };
   }
 

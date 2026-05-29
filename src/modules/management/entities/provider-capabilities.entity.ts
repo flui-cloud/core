@@ -91,4 +91,6 @@ export interface ProviderCapabilities {
   };
   /** VNet topology info — null when privateNetworking is false */
   vnetTopology: VNetTopology | null;
+  vnetRequired: boolean;
+  crossClusterAllowed: boolean;
 }

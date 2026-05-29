@@ -232,6 +232,8 @@ export class HetznerCapabilitiesService
         vnetIpRange: { minPrefix: 8, maxPrefix: 29 },
         subnetIpRange: { minPrefix: 8, maxPrefix: 29 },
       },
+      vnetRequired: true,
+      crossClusterAllowed: false,
     };
   }
 

@@ -2,10 +2,13 @@
  * One-time script to update the kubeconfig for an existing cluster.
  *
  * Usage:
- *   npx ts-node scripts/update-kubeconfig.ts <cluster-id> <master-ip>
+ *   npx ts-node scripts/update-kubeconfig.ts <cluster-id> <ssh-master-ip> [server-ip]
  *
- * It will SSH to the master, fetch /etc/rancher/k3s/k3s.yaml,
- * replace 127.0.0.1 with the master IP, encrypt it, and update the DB.
+ * It SSHes to <ssh-master-ip> (the reachable public IP), fetches
+ * /etc/rancher/k3s/k3s.yaml, and writes [server-ip] into the kubeconfig
+ * server field. When [server-ip] is omitted it defaults to the cluster's
+ * masterPrivateIp — the K3s API is reachable only inside the VNet (6443 is
+ * never public), so intra-cluster traffic stays on the private network.
  */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
@@ -17,25 +20,15 @@ import { execSync } from 'child_process';
 
 async function main() {
   const clusterId = process.argv[2];
-  const masterIp = process.argv[3];
+  const sshMasterIp = process.argv[3];
+  const serverIpArg = process.argv[4];
 
-  if (!clusterId || !masterIp) {
-    console.error('Usage: npx ts-node scripts/update-kubeconfig.ts <cluster-id> <master-ip>');
+  if (!clusterId || !sshMasterIp) {
+    console.error(
+      'Usage: npx ts-node scripts/update-kubeconfig.ts <cluster-id> <ssh-master-ip> [server-ip]',
+    );
     process.exit(1);
   }
-
-  console.log(`Fetching kubeconfig from ${masterIp}...`);
-
-  // Read kubeconfig via SSH using the CLI CA key
-  const raw = execSync(
-    `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${masterIp} "sudo cat /etc/rancher/k3s/k3s.yaml"`,
-    { encoding: 'utf-8' },
-  );
-
-  // Replace localhost with real IP
-  const kubeconfig = raw.replace(/127\.0\.0\.1/g, masterIp);
-  console.log(`Kubeconfig fetched (${kubeconfig.length} bytes)`);
-  console.log('Server URL:', kubeconfig.match(/server: .*/)?.[0]);
 
   // Boot NestJS to get EncryptionService and DB connection
   const app = await NestFactory.createApplicationContext(AppModule, {
@@ -54,7 +47,20 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Updating kubeconfig for cluster: ${cluster.name} (${cluster.id})`);
+  const serverIp = serverIpArg ?? cluster.masterPrivateIp ?? sshMasterIp;
+  console.log(
+    `Cluster: ${cluster.name} (${cluster.id}) — fetching from ${sshMasterIp}, server will be ${serverIp}`,
+  );
+
+  const raw = execSync(
+    `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@${sshMasterIp} "sudo cat /etc/rancher/k3s/k3s.yaml"`,
+    { encoding: 'utf-8' },
+  );
+
+  const kubeconfig = raw.replace(/127\.0\.0\.1/g, serverIp);
+  console.log(`Kubeconfig fetched (${kubeconfig.length} bytes)`);
+  console.log('Server URL:', kubeconfig.match(/server: .*/)?.[0]);
+
   cluster.kubeconfigEncrypted = encryptionService.encrypt(kubeconfig);
   await clusterRepo.save(cluster);
 

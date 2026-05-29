@@ -262,10 +262,27 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Ingress controller',
     category: 'networking',
     managedBy: 'k3s',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.OBSERVABILITY],
     resources: [
       {
         kind: 'DaemonSet',
+        name: 'traefik',
+        namespace: 'kube-system',
+        workload: true,
+      },
+      { kind: 'Service', name: 'traefik', namespace: 'kube-system' },
+    ],
+  },
+  {
+    key: 'traefik',
+    name: 'Traefik',
+    description: 'Ingress controller',
+    category: 'networking',
+    managedBy: 'k3s',
+    clusterTypes: [ClusterType.WORKLOAD],
+    resources: [
+      {
+        kind: 'Deployment',
         name: 'traefik',
         namespace: 'kube-system',
         workload: true,
