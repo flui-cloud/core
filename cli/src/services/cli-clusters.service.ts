@@ -115,7 +115,7 @@ export class CliClustersService {
     const adminEmail = (createClusterDto.metadata as any)?.adminEmail || '';
     const adminPassword = this.generateSecurePassword(24);
 
-    // Generate Zitadel secrets (only used by OBSERVABILITY clusters)
+    // Generate Zitadel secrets (only used by control clusters)
     const zitadelMasterkey = this.generateSecurePassword(32);
     const zitadelDbAdminPassword = this.generateSecurePassword(32);
     const zitadelDbUserPassword = this.generateSecurePassword(32);
@@ -124,11 +124,12 @@ export class CliClustersService {
     // Get worker count from DTO
     const workerCount = createClusterDto.workerCount;
 
-    // Determine cluster type from metadata (same logic as API)
+    // Determine cluster type from metadata (same logic as API; accept legacy flag)
     const metadata = createClusterDto.metadata || {};
-    const clusterType = metadata.isObservabilityCluster
-      ? ClusterType.OBSERVABILITY
-      : ClusterType.WORKLOAD;
+    const clusterType =
+      metadata.isControlCluster || metadata.isObservabilityCluster
+        ? ClusterType.CONTROL
+        : ClusterType.WORKLOAD;
 
     const hostnameMode =
       createClusterDto.endpointHostnameMode ?? HostnameMode.IP;
@@ -276,7 +277,7 @@ export class CliClustersService {
       throw new Error(`Cluster ${id} not found`);
     }
 
-    this.logger.log(`Deleting observability cluster ${id} (${cluster.name})`);
+    this.logger.log(`Deleting control cluster ${id} (${cluster.name})`);
     this.logger.log(
       `Cluster details: ${JSON.stringify({
         id: cluster.id,
@@ -431,7 +432,7 @@ export class CliClustersService {
         );
       }
 
-      // Filter servers that belong to this observability cluster
+      // Filter servers that belong to this control cluster
       const orphanedServers = allServers.filter((server) => {
         // Check if already deleted in Phase 1
         if (deletedServerIds.has(server.provider_resource_id)) {
@@ -441,7 +442,7 @@ export class CliClustersService {
           return false;
         }
 
-        // Check if server belongs to this observability cluster
+        // Check if server belongs to this control cluster
         const hasObservabilityId = server.labels?.some(
           (label) =>
             label.key === 'flui-cluster-id' && label.value === cluster.id,
@@ -565,14 +566,16 @@ export class CliClustersService {
           this.logger.log(
             `No firewalls found by label. Searching by name pattern...`,
           );
-          // Search for firewalls with observability pattern:
-          // - Old pattern: flui-observability-{clusterId}
-          // - New pattern: flui-observability-firewall-{timestamp}
+          // Search for the control-cluster firewall by name pattern:
+          // - Current: flui-control-{clusterId} / flui-control-firewall
+          // - Legacy: flui-observability-{clusterId} / flui-observability-firewall-{timestamp}
           const allProviderFirewalls = await this.firewallService.listFirewalls(
             {},
           );
           const nameMatchedFirewalls = allProviderFirewalls.filter(
             (fw) =>
+              fw.name === `flui-control-${cluster.id}` ||
+              fw.name === 'flui-control-firewall' ||
               fw.name === `flui-observability-${cluster.id}` ||
               fw.name.startsWith('flui-observability-firewall-') ||
               fw.name.startsWith('flui-firewall-temp-'), // Legacy pattern
@@ -730,7 +733,7 @@ export class CliClustersService {
         const allKeys = await provider.listSSHKeys();
         this.logger.log(`Found ${allKeys.length} total SSH keys on provider`);
 
-        // Filter bootstrap keys for this observability cluster
+        // Filter bootstrap keys for this control cluster
         const bootstrapKeys = allKeys.filter((key) => {
           const tags = key.tags || {};
 

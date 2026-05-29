@@ -127,7 +127,7 @@ export class GrafanaDatasourceResponseDto {
 }
 
 /**
- * DTO for observability cluster endpoints
+ * DTO for control cluster endpoints
  */
 export class ObservabilityEndpointsDto {
   @ApiProperty({

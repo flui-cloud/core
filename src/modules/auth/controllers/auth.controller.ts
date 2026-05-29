@@ -331,8 +331,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({
-    summary:
-      'Run full OIDC bootstrap for the observability cluster (idempotent)',
+    summary: 'Run full OIDC bootstrap for the control cluster (idempotent)',
     description:
       'Creates the Flui project, roles, web + CLI OIDC apps, bootstrap admin, patches ConfigMap and triggers rolling restart. ' +
       'Called automatically by the CLI after Zitadel becomes ready during `flui env create`. Safe to re-run on existing installs.',
@@ -436,7 +435,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Switch platform auth mode (local ↔ oidc)',
     description:
-      'Patches flui-secrets, flui-api-config, and flui-web-config on the observability cluster ' +
+      'Patches flui-secrets, flui-api-config, and flui-web-config on the control cluster ' +
       'with the new auth configuration, then restarts flui-api and flui-web. ' +
       'Requires admin. In local mode: first call allowed without auth if no users exist yet.',
   })
@@ -448,7 +447,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Admin access required' })
-  @ApiResponse({ status: 404, description: 'Observability cluster not found' })
+  @ApiResponse({ status: 404, description: 'Control cluster not found' })
   async configureMode(
     @Body() dto: ConfigureAuthModeDto,
   ): Promise<ConfigureAuthModeResultDto> {

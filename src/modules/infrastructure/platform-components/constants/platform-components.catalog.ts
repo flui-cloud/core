@@ -41,7 +41,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Control plane API service',
     category: 'control-plane',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -58,7 +58,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Control plane dashboard frontend',
     category: 'control-plane',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -75,7 +75,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Identity provider and OIDC server',
     category: 'security',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     requiredAuthMode: 'oidc',
     resources: [
       {
@@ -93,7 +93,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Metrics and logs visualization',
     category: 'observability',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -110,7 +110,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Single-node TSDB and remote_write receiver',
     category: 'observability',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -127,7 +127,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Metrics scraper that pushes to vmsingle via remote_write',
     category: 'observability',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -143,7 +143,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Evaluates recording/alerting rules against vmsingle',
     category: 'observability',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -160,7 +160,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Log aggregation backend',
     category: 'observability',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -177,7 +177,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Primary control plane database',
     category: 'control-plane',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'StatefulSet',
@@ -194,7 +194,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Cache and queue backend',
     category: 'control-plane',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -211,7 +211,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Cluster object metrics exporter',
     category: 'observability',
     managedBy: 'addon',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'Deployment',
@@ -227,7 +227,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Certificate lifecycle manager (ACME/issuers)',
     category: 'security',
     managedBy: 'addon',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.CONTROL, ClusterType.WORKLOAD],
     resources: [
       {
         kind: 'Deployment',
@@ -262,7 +262,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Ingress controller',
     category: 'networking',
     managedBy: 'k3s',
-    clusterTypes: [ClusterType.OBSERVABILITY],
+    clusterTypes: [ClusterType.CONTROL],
     resources: [
       {
         kind: 'DaemonSet',
@@ -296,7 +296,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Cluster DNS service',
     category: 'core',
     managedBy: 'k3s',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.CONTROL, ClusterType.WORKLOAD],
     resources: [
       {
         kind: 'Deployment',
@@ -312,7 +312,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Resource metrics API for pods and nodes',
     category: 'core',
     managedBy: 'k3s',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.CONTROL, ClusterType.WORKLOAD],
     resources: [
       {
         kind: 'Deployment',
@@ -328,7 +328,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'Default storage provisioner',
     category: 'storage',
     managedBy: 'k3s',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.CONTROL, ClusterType.WORKLOAD],
     resources: [
       {
         kind: 'Deployment',
@@ -344,7 +344,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
     description: 'In-cluster JWT validator for Traefik ForwardAuth',
     category: 'security',
     managedBy: 'flui',
-    clusterTypes: [ClusterType.OBSERVABILITY, ClusterType.WORKLOAD],
+    clusterTypes: [ClusterType.CONTROL, ClusterType.WORKLOAD],
     requiredAuthMode: 'oidc',
     requiredAuthzInstall: true,
     resources: [

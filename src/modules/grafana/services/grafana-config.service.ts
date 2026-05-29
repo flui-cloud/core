@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   ClusterEntity,
   ClusterType,
@@ -12,7 +12,7 @@ import { buildSystemNipHostname } from '../../dns/utils/nip-hostname.util';
 /**
  * Service for retrieving Grafana configuration and credentials
  * This service breaks the circular dependency by directly querying the clusters table
- * instead of depending on ObservabilityClusterService
+ * instead of depending on ControlClusterService
  */
 @Injectable()
 export class GrafanaConfigService {
@@ -25,7 +25,7 @@ export class GrafanaConfigService {
   ) {}
 
   /**
-   * Get Grafana URL and credentials from observability cluster metadata
+   * Get Grafana URL and credentials from control cluster metadata
    * @returns Grafana endpoint URL, username, and admin password
    */
   async getGrafanaCredentials(): Promise<{
@@ -33,11 +33,11 @@ export class GrafanaConfigService {
     username: string;
     password: string;
   }> {
-    const obsCluster = await this.getObservabilityCluster();
+    const obsCluster = await this.getControlCluster();
 
     if (!obsCluster) {
       throw new Error(
-        'No observability cluster found - cannot manage Grafana datasources',
+        'No control cluster found - cannot manage Grafana datasources',
       );
     }
 
@@ -66,7 +66,7 @@ export class GrafanaConfigService {
     // If GRAFANA_URL is provided, use env vars for complete configuration
     if (envGrafanaUrl) {
       this.logger.log(
-        'Observability cluster metadata missing. Using GRAFANA_URL from environment variables.',
+        'Control cluster metadata missing. Using GRAFANA_URL from environment variables.',
       );
 
       // Validate URL format
@@ -103,13 +103,13 @@ export class GrafanaConfigService {
 
     // PRIORITY 3: FALLBACK - Construct URL from cluster IP + use env vars for credentials
     this.logger.warn(
-      'Observability cluster metadata missing Grafana credentials. ' +
+      'Control cluster metadata missing Grafana credentials. ' +
         'Using fallback: cluster IP + environment variables for credentials',
     );
 
     if (!obsCluster.masterIpAddress) {
       throw new Error(
-        'Observability cluster missing master IP address. ' +
+        'Control cluster missing master IP address. ' +
           'Cannot construct Grafana endpoint URL. ' +
           'Please set GRAFANA_URL environment variable or ensure cluster has masterIpAddress.',
       );
@@ -118,7 +118,7 @@ export class GrafanaConfigService {
     if (!envGrafanaPassword) {
       throw new Error(
         'GRAFANA_ADMIN_PASSWORD environment variable not set. ' +
-          'This is required for CLI-created observability clusters. ' +
+          'This is required for CLI-created control clusters. ' +
           'Please set this variable and restart the application.',
       );
     }
@@ -138,31 +138,31 @@ export class GrafanaConfigService {
   }
 
   /**
-   * Get the observability cluster entity
-   * @returns ObservabilityCluster entity or null if not found
+   * Get the control cluster entity
+   * @returns control cluster entity or null if not found
    */
-  async getObservabilityCluster(): Promise<ClusterEntity | null> {
+  async getControlCluster(): Promise<ClusterEntity | null> {
     try {
       const obsCluster = await this.clusterRepository.findOne({
         where: {
-          clusterType: ClusterType.OBSERVABILITY,
+          clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
           status: ClusterStatus.READY,
         },
         order: { createdAt: 'DESC' },
       });
 
       if (!obsCluster) {
-        this.logger.warn('No READY observability cluster found in database');
+        this.logger.warn('No READY control cluster found in database');
         return null;
       }
 
       this.logger.log(
-        `Found observability cluster: ${obsCluster.name} (${obsCluster.id})`,
+        `Found control cluster: ${obsCluster.name} (${obsCluster.id})`,
       );
       return obsCluster;
     } catch (error) {
       this.logger.error(
-        `Error retrieving observability cluster: ${error.message}`,
+        `Error retrieving control cluster: ${error.message}`,
         error.stack,
       );
       return null;

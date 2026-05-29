@@ -2,7 +2,7 @@ import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { printContextBanner } from '../../lib/context-banner';
 
@@ -48,15 +48,15 @@ export default class EnvInspect extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const sshService = app.get(CliSshService);
 
       // Get cluster
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;

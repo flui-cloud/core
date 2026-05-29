@@ -23,7 +23,7 @@ import { LabelService } from 'src/modules/infrastructure/shared/services/label.s
 import { CliK3sScriptService } from '../services/cli-k3s-script.service';
 import { CliClusterCreatorService } from '../services/cli-cluster-creator.service';
 import { CliClustersService } from '../services/cli-clusters.service';
-import { CliObservabilityClusterService } from '../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../services/cli-control-cluster.service';
 import { CliSshService } from '../services/cli-ssh.service';
 import { CliCaService } from '../services/cli-ca.service';
 import { CliLoggerService } from '../services/cli-logger.service';
@@ -152,7 +152,7 @@ import { CommonModule } from 'src/modules/common/common.module';
     LabelService,
     KubernetesService,
     CliClustersService,
-    CliObservabilityClusterService,
+    CliControlClusterService,
     CliSshService,
     CliCaService,
     CliLoggerService,
@@ -222,7 +222,7 @@ import { CommonModule } from 'src/modules/common/common.module';
     ClusterNodeScalingService,
   ],
   exports: [
-    CliObservabilityClusterService,
+    CliControlClusterService,
     CliClustersService,
     KubernetesService,
     LabelService,

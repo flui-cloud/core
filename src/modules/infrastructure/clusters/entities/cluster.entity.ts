@@ -23,8 +23,27 @@ export enum ClusterStatus {
 }
 
 export enum ClusterType {
-  OBSERVABILITY = 'observability',
+  CONTROL = 'control',
   WORKLOAD = 'workload',
+  /** @deprecated legacy value for the control cluster; kept for back-compat reads until all rows are migrated. */
+  OBSERVABILITY = 'observability',
+}
+
+/** Maps the legacy `observability` value forward to `control`; passes other values through. */
+export function normalizeClusterType(
+  value?: ClusterType | string | null,
+): ClusterType {
+  if (value === ClusterType.OBSERVABILITY) {
+    return ClusterType.CONTROL;
+  }
+  return (value as ClusterType) ?? ClusterType.WORKLOAD;
+}
+
+/** True for the control cluster, accepting both the new and legacy enum values. */
+export function isControlClusterType(
+  value?: ClusterType | string | null,
+): boolean {
+  return value === ClusterType.CONTROL || value === ClusterType.OBSERVABILITY;
 }
 
 @Entity('infrastructure_clusters')

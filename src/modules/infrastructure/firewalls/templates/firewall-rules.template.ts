@@ -12,7 +12,7 @@ import { FirewallRule } from '../../../providers/interfaces/firewall-provider.in
  *   80     Traefik HTTP (api/app/auth via nip.io ingress)
  *   443    Traefik HTTPS
  */
-export const OBSERVABILITY_FIREWALL_RULES = (
+export const CONTROL_FIREWALL_RULES = (
   sourceCidrs: string[],
 ): FirewallRule[] => [
   {
@@ -185,12 +185,13 @@ function isValidCidr(cidr: string): boolean {
 }
 
 export function getFirewallRulesForClusterType(
-  clusterType: 'observability' | 'workload',
+  clusterType: 'control' | 'observability' | 'workload',
   sourceCidrs: string[],
 ): FirewallRule[] {
   switch (clusterType) {
+    case 'control':
     case 'observability':
-      return OBSERVABILITY_FIREWALL_RULES(sourceCidrs);
+      return CONTROL_FIREWALL_RULES(sourceCidrs);
     case 'workload':
       return WORKLOAD_FIREWALL_RULES(sourceCidrs);
     default:

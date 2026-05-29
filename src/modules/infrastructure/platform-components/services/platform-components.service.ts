@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import {
   ClusterEntity,
   ClusterType,
+  normalizeClusterType,
 } from '../../clusters/entities/cluster.entity';
 import { ClusterAuthzInstallRepository } from '../../../authz/repositories/cluster-authz-install.repository';
 import { KubernetesService } from '../../shared/services/kubernetes.service';
@@ -794,6 +795,7 @@ export class PlatformComponentsService {
     authMode?: string,
     hasAuthzInstall?: boolean,
   ): PlatformComponentDefinition[] {
+    clusterType = normalizeClusterType(clusterType);
     return PLATFORM_COMPONENTS_CATALOG.filter((component) => {
       if (!component.clusterTypes.includes(clusterType)) return false;
       if (component.requiredAuthMode && authMode !== component.requiredAuthMode)

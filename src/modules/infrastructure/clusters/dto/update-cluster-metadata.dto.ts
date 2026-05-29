@@ -8,8 +8,8 @@ export class UpdateClusterMetadataDto {
   @ApiProperty({
     description: 'Metadata object to merge with existing metadata',
     example: {
-      isObservabilityCluster: true,
-      purpose: 'monitoring',
+      isControlCluster: true,
+      purpose: 'control',
       customField: 'value',
     },
   })

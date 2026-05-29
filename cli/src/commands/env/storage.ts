@@ -2,7 +2,7 @@ import { Command } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { ClusterStorageService } from 'src/modules/infrastructure/clusters/services/cluster-storage.service';
 import {
   ClusterStorageStatus,
@@ -12,7 +12,7 @@ import { printContextBanner } from '../../lib/context-banner';
 
 export default class EnvStorage extends Command {
   static readonly description =
-    'Show shared storage status (Volume + NFS export + PVC summary) for the current observability cluster';
+    'Show shared storage status (Volume + NFS export + PVC summary) for the current control cluster';
 
   static readonly examples = ['<%= config.bin %> <%= command.id %>'];
 
@@ -22,12 +22,12 @@ export default class EnvStorage extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const storageService = app.get(ClusterStorageService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
       if (!cluster) {
-        spinner.fail('No observability cluster found');
+        spinner.fail('No control cluster found');
         console.log(
           chalk.yellow(
             '\n⚠️  Create a cluster first: ' + chalk.cyan('flui env create\n'),

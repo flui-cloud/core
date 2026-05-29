@@ -2071,13 +2071,13 @@ export class ClusterQueueProcessor {
   }
 
   /**
-   * Register workload cluster in Grafana observability cluster
+   * Register workload cluster in Grafana control cluster
    * Called automatically after cluster becomes READY
    */
   private async registerClusterInGrafana(
     cluster: ClusterEntity,
   ): Promise<void> {
-    // Only register WORKLOAD clusters (not OBSERVABILITY clusters)
+    // Only register WORKLOAD clusters (not control clusters)
     if (cluster.clusterType !== ClusterType.WORKLOAD) {
       this.logger.debug(
         `Skipping Grafana registration for ${cluster.clusterType} cluster ${cluster.name}`,
@@ -2087,15 +2087,14 @@ export class ClusterQueueProcessor {
 
     try {
       this.logger.log(
-        `Registering cluster ${cluster.name} in Grafana observability cluster`,
+        `Registering cluster ${cluster.name} in Grafana control cluster`,
       );
 
-      // Check if observability cluster exists
-      const obsCluster =
-        await this.grafanaConfigService.getObservabilityCluster();
+      // Check if control cluster exists
+      const obsCluster = await this.grafanaConfigService.getControlCluster();
       if (!obsCluster) {
         this.logger.warn(
-          'No observability cluster found - skipping Grafana registration',
+          'No control cluster found - skipping Grafana registration',
         );
         return;
       }

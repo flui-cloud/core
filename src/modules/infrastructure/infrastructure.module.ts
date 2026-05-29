@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ServersModule } from './servers/servers.module';
 import { ClustersModule } from './clusters/clusters.module';
 import { InfrastructureOperationsModule } from './operations/infrastructure-operations.module';
-import { ObservabilityClusterModule } from './observability-cluster/observability-cluster.module';
+import { ControlClusterModule } from './control-cluster/control-cluster.module';
 import { VNetsModule } from './vnets/vnets.module';
 import { PlatformComponentsModule } from './platform-components/platform-components.module';
 import { ConfigModule } from '@nestjs/config';
@@ -13,7 +13,7 @@ import { ConfigModule } from '@nestjs/config';
     InfrastructureOperationsModule,
     ServersModule,
     ClustersModule,
-    ObservabilityClusterModule,
+    ControlClusterModule,
     VNetsModule,
     PlatformComponentsModule,
     // FirewallsModule (future)
@@ -22,7 +22,7 @@ import { ConfigModule } from '@nestjs/config';
     InfrastructureOperationsModule,
     ServersModule,
     ClustersModule,
-    ObservabilityClusterModule,
+    ControlClusterModule,
     VNetsModule,
     PlatformComponentsModule,
   ],

@@ -5,7 +5,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { ObservabilityClusterService } from './observability-cluster.service';
+import { ControlClusterService } from './control-cluster.service';
 import { ClusterResponseDto } from '../clusters/dto/cluster-response.dto';
 import { ClusterMapperService } from '../clusters/services/cluster-mapper.service';
 import { ObservabilityEndpointsDto } from '../../grafana/dto/grafana-datasource.dto';
@@ -13,47 +13,46 @@ import { GrafanaDatasourceService } from '../../grafana/services/grafana-datasou
 import { GrafanaConfigService } from '../../grafana/services/grafana-config.service';
 
 /**
- * Controller for managing observability cluster operations
- * Provides endpoints to retrieve observability cluster info and endpoints
+ * Controller for managing control cluster operations
+ * Provides endpoints to retrieve control cluster info and observability endpoints
  */
-@ApiTags('Observability Cluster')
+@ApiTags('Control Cluster')
 @ApiBearerAuth()
-@Controller('observability-cluster')
-export class ObservabilityClusterController {
+@Controller('control-cluster')
+export class ControlClusterController {
   constructor(
-    private readonly observabilityClusterService: ObservabilityClusterService,
+    private readonly controlClusterService: ControlClusterService,
     private readonly clusterMapperService: ClusterMapperService,
     private readonly grafanaDatasourceService: GrafanaDatasourceService,
     private readonly grafanaConfigService: GrafanaConfigService,
   ) {}
 
   /**
-   * Get observability cluster information
-   * Returns the current observability cluster details including status and configuration
+   * Get control cluster information
+   * Returns the current control cluster details including status and configuration
    */
   @Get()
   @ApiOperation({
-    summary: 'Get observability cluster info',
+    summary: 'Get control cluster info',
     description:
-      'Returns the observability cluster details including endpoints, status, and configuration. ' +
-      'This endpoint is used to check if an observability cluster exists and retrieve its information.',
+      'Returns the control cluster details including endpoints, status, and configuration. ' +
+      'This endpoint is used to check if an control cluster exists and retrieve its information.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Observability cluster found',
+    description: 'Control cluster found',
     type: ClusterResponseDto,
   })
   @ApiResponse({
     status: 404,
-    description: 'No observability cluster exists',
+    description: 'No control cluster exists',
   })
-  async getObservabilityCluster(): Promise<ClusterResponseDto> {
-    const cluster =
-      await this.observabilityClusterService.getObservabilityCluster();
+  async getControlCluster(): Promise<ClusterResponseDto> {
+    const cluster = await this.controlClusterService.getControlCluster();
 
     if (!cluster) {
       throw new NotFoundException(
-        'No observability cluster exists. Create one first using POST /api/v1/observability-cluster',
+        'No control cluster exists. Create one first using POST /api/v1/control-cluster',
       );
     }
 
@@ -69,7 +68,7 @@ export class ObservabilityClusterController {
     summary: 'Get observability service endpoints',
     description:
       'Returns the URLs for all observability services (Prometheus, Loki, Grafana, PostgreSQL, Redis). ' +
-      'These endpoints are used by workload clusters to send metrics and logs to the observability cluster.',
+      'These endpoints are used by workload clusters to send metrics and logs to the control cluster.',
   })
   @ApiResponse({
     status: 200,
@@ -78,15 +77,14 @@ export class ObservabilityClusterController {
   })
   @ApiResponse({
     status: 404,
-    description: 'No observability cluster exists or endpoints not available',
+    description: 'No control cluster exists or endpoints not available',
   })
   async getEndpoints(): Promise<ObservabilityEndpointsDto> {
-    const cluster =
-      await this.observabilityClusterService.getObservabilityCluster();
+    const cluster = await this.controlClusterService.getControlCluster();
 
     if (!cluster) {
       throw new NotFoundException(
-        'No observability cluster exists. Create one first using POST /api/v1/observability-cluster',
+        'No control cluster exists. Create one first using POST /api/v1/control-cluster',
       );
     }
 
@@ -106,9 +104,7 @@ export class ObservabilityClusterController {
     // If not in metadata, query Kubernetes (slower but more accurate)
     try {
       const endpoints =
-        await this.observabilityClusterService.getObservabilityEndpoints(
-          cluster.id,
-        );
+        await this.controlClusterService.getObservabilityEndpoints(cluster.id);
       return {
         prometheus: endpoints.prometheus,
         loki: endpoints.loki,
@@ -119,7 +115,7 @@ export class ObservabilityClusterController {
       };
     } catch {
       throw new NotFoundException(
-        `Observability cluster exists but endpoints are not available. ` +
+        `Control cluster exists but endpoints are not available. ` +
           `Cluster may not be ready yet. Current status: ${cluster.status}`,
       );
     }
@@ -163,7 +159,7 @@ export class ObservabilityClusterController {
         await this.grafanaConfigService.getGrafanaCredentials();
 
       // Determine configuration source
-      const cluster = await this.grafanaConfigService.getObservabilityCluster();
+      const cluster = await this.grafanaConfigService.getControlCluster();
       let configSource = 'fallback';
 
       if (
@@ -212,7 +208,7 @@ export class ObservabilityClusterController {
           '2) GRAFANA_URL incorrect, ' +
           '3) Grafana not accessible, ' +
           '4) Invalid credentials, ' +
-          '5) No observability cluster found',
+          '5) No control cluster found',
         configSource: null,
       };
     }
@@ -220,7 +216,7 @@ export class ObservabilityClusterController {
 
   /**
    * Create or update centralized Loki datasource in Grafana
-   * Manually trigger datasource creation if it wasn't created during observability cluster deployment
+   * Manually trigger datasource creation if it wasn't created during control cluster deployment
    */
   @Post('grafana-datasources/loki')
   @ApiOperation({
@@ -275,7 +271,7 @@ export class ObservabilityClusterController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Observability cluster not found or Grafana not accessible',
+    description: 'Control cluster not found or Grafana not accessible',
     schema: {
       type: 'object',
       properties: {
@@ -299,13 +295,12 @@ export class ObservabilityClusterController {
   })
   async createLokiDatasource(): Promise<any> {
     try {
-      // Verify observability cluster exists
-      const cluster =
-        await this.observabilityClusterService.getObservabilityCluster();
+      // Verify control cluster exists
+      const cluster = await this.controlClusterService.getControlCluster();
 
       if (!cluster) {
         throw new NotFoundException(
-          'No observability cluster exists. Create one first using POST /api/v1/observability-cluster',
+          'No control cluster exists. Create one first using POST /api/v1/control-cluster',
         );
       }
 
@@ -341,18 +336,18 @@ export class ObservabilityClusterController {
           error: 'LOKI_ENDPOINT not configured',
           details:
             'LOKI_ENDPOINT environment variable is not set. ' +
-            'This should point to the Loki service on the observability cluster (e.g., http://observability-master-ip:30100). ' +
+            'This should point to the Loki service on the control cluster (e.g., http://observability-master-ip:30100). ' +
             'Check your .env file and ensure LOKI_ENDPOINT is configured.',
         };
       }
 
       // Check for Grafana connection issues
       if (
-        error.message?.includes('No observability cluster found') ||
+        error.message?.includes('No control cluster found') ||
         error.message?.includes('Grafana endpoint or password')
       ) {
         throw new NotFoundException(
-          'Observability cluster exists but Grafana configuration is incomplete. ' +
+          'Control cluster exists but Grafana configuration is incomplete. ' +
             'Ensure observability stack has been deployed successfully with Grafana endpoints and credentials.',
         );
       }
@@ -364,7 +359,7 @@ export class ObservabilityClusterController {
         details:
           'An unexpected error occurred while creating the Loki datasource. ' +
           'Check that:\n' +
-          '1. Observability cluster is READY\n' +
+          '1. Control cluster is READY\n' +
           '2. Grafana is accessible\n' +
           '3. LOKI_ENDPOINT is configured correctly\n' +
           '4. Grafana credentials are valid\n\n' +

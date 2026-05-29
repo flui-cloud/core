@@ -99,7 +99,7 @@ export interface K3sWorkerConfig {
 /**
  * CLI K3s Script Service
  *
- * Generates K3s initialization scripts for observability clusters.
+ * Generates K3s initialization scripts for control clusters.
  * Uses scripts from cli/src/modules/instances/assets/scripts/ directory.
  */
 @Injectable()

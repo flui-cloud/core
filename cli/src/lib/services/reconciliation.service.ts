@@ -98,8 +98,7 @@ export class ReconciliationService {
         return {
           type: ReconciliationType.DNS,
           success: true,
-          message:
-            'No observability cluster found, skipping DNS reconciliation',
+          message: 'No control cluster found, skipping DNS reconciliation',
         };
       }
 

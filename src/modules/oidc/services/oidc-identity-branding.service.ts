@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -178,11 +178,13 @@ export class OidcIdentityBranding implements IIdentityBranding {
       );
     }
     const cluster = await this.clusterRepo.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!cluster?.masterIpAddress) {
       throw new InternalServerErrorException(
-        'Observability cluster master IP unknown — cannot reach OIDC provider',
+        'Control cluster master IP unknown — cannot reach OIDC provider',
       );
     }
     return {

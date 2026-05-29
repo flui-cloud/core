@@ -10,7 +10,11 @@ import {
   ClusterStatus,
   ClusterType,
 } from '../clusters/entities/cluster.entity';
-import { K3S_DEFAULT_VERSION } from '../clusters/constants';
+import {
+  K3S_DEFAULT_VERSION,
+  FLUI_CONTROL_NAMESPACE,
+  FLUI_LEGACY_CONTROL_NAMESPACE,
+} from '../clusters/constants';
 import { ClustersService } from '../clusters/clusters.service';
 import { KubernetesService } from '../shared/services/kubernetes.service';
 import { GrafanaDatasourceService } from 'src/modules/grafana/services/grafana-datasource.service';
@@ -33,8 +37,8 @@ export interface ObservabilityStackConfig {
 }
 
 @Injectable()
-export class ObservabilityClusterService {
-  private readonly logger = new Logger(ObservabilityClusterService.name);
+export class ControlClusterService {
+  private readonly logger = new Logger(ControlClusterService.name);
 
   constructor(
     @InjectRepository(ClusterEntity)
@@ -45,41 +49,42 @@ export class ObservabilityClusterService {
   ) {}
 
   /**
-   * Create observability cluster
+   * Create control cluster
    */
-  async createObservabilityCluster(
+  async createControlCluster(
     provider: string,
     region: string,
     nodeSize: string,
     workerCount: number = 0,
   ): Promise<string> {
-    this.logger.log('Creating observability cluster...');
+    this.logger.log('Creating control cluster...');
 
-    // Check if observability cluster already exists
-    // Use getObservabilityCluster() for consistent lookup logic
-    const existing = await this.getObservabilityCluster();
+    // Check if control cluster already exists
+    // Use getControlCluster() for consistent lookup logic
+    const existing = await this.getControlCluster();
 
     if (existing && existing.status !== ClusterStatus.DELETED) {
       throw new Error(
-        'Observability cluster already exists. Delete it first before creating a new one.',
+        'Control cluster already exists. Delete it first before creating a new one.',
       );
     }
 
     // Create cluster via ClustersService (returns operation, not cluster)
     const operation = await this.clustersService.createCluster({
-      name: 'flui-observability',
+      name: 'control-cluster',
       provider: provider as any, // CloudProvider enum
       region,
       nodeSize,
       workerCount,
       k3sVersion: K3S_DEFAULT_VERSION,
       metadata: {
-        purpose: 'observability',
+        purpose: 'control',
+        isControlCluster: true,
       },
     });
 
     this.logger.log(
-      `Observability cluster creation started: operation ${operation.id}`,
+      `Control cluster creation started: operation ${operation.id}`,
     );
     // Return the cluster ID from operation metadata or resourceId
     return operation.resourceId || operation.metadata?.clusterId;
@@ -208,23 +213,20 @@ export class ObservabilityClusterService {
     }
 
     // Get NodePort services
-    const prometheusService = await this.kubernetesService.getResource(
+    const prometheusService = await this.getControlNamespaceResource(
       kubeconfig,
       'Service',
       'prometheus',
-      'flui-observability',
     );
-    const grafanaService = await this.kubernetesService.getResource(
+    const grafanaService = await this.getControlNamespaceResource(
       kubeconfig,
       'Service',
       'grafana',
-      'flui-observability',
     );
-    const lokiService = await this.kubernetesService.getResource(
+    const lokiService = await this.getControlNamespaceResource(
       kubeconfig,
       'Service',
       'loki',
-      'flui-observability',
     );
     const postgresService = await this.kubernetesService.getResource(
       kubeconfig,
@@ -281,10 +283,10 @@ export class ObservabilityClusterService {
   }
 
   /**
-   * Delete observability cluster
+   * Delete control cluster
    */
-  async deleteObservabilityCluster(clusterId: string): Promise<void> {
-    this.logger.log(`Deleting observability cluster ${clusterId}...`);
+  async deleteControlCluster(clusterId: string): Promise<void> {
+    this.logger.log(`Deleting control cluster ${clusterId}...`);
 
     const cluster = await this.clusterRepository.findOne({
       where: { id: clusterId },
@@ -293,23 +295,25 @@ export class ObservabilityClusterService {
       throw new NotFoundException(`Cluster ${clusterId} not found`);
     }
 
-    if (cluster.metadata?.purpose !== 'observability') {
-      throw new Error(`Cluster ${clusterId} is not an observability cluster`);
+    const purpose = cluster.metadata?.purpose;
+    if (purpose !== 'control' && purpose !== 'observability') {
+      throw new Error(`Cluster ${clusterId} is not a control cluster`);
     }
 
     await this.clustersService.deleteCluster(clusterId);
-    this.logger.log(`Observability cluster ${clusterId} deleted`);
+    this.logger.log(`Control cluster ${clusterId} deleted`);
   }
 
   /**
-   * Get observability cluster
+   * Get the control cluster (accepts both the new and legacy enum/metadata values).
    */
-  async getObservabilityCluster(): Promise<ClusterEntity | null> {
-    // First try to find by clusterType (new standard way)
+  async getControlCluster(): Promise<ClusterEntity | null> {
+    // First try to find by clusterType (new + legacy values)
     const clusterByType = await this.clusterRepository.findOne({
-      where: {
-        clusterType: ClusterType.OBSERVABILITY,
-      },
+      where: [
+        { clusterType: ClusterType.CONTROL },
+        { clusterType: ClusterType.OBSERVABILITY },
+      ],
       relations: ['nodes'],
     });
 
@@ -320,15 +324,41 @@ export class ObservabilityClusterService {
     // Fallback to legacy metadata.purpose for backward compatibility
     return await this.clusterRepository.findOne({
       where: {
-        metadata: Raw((alias) => `${alias} ->> 'purpose' = :purpose`, {
-          purpose: 'observability',
-        }),
+        metadata: Raw(
+          (alias) => `${alias} ->> 'purpose' IN ('control', 'observability')`,
+        ),
       },
       relations: ['nodes'],
     });
   }
 
   // Private helper methods
+
+  /**
+   * Reads a resource from the control cluster's observability namespace, trying the
+   * current namespace first and falling back to the legacy one for older clusters.
+   */
+  private async getControlNamespaceResource(
+    kubeconfig: string,
+    kind: string,
+    name: string,
+  ): Promise<any> {
+    const current = await this.kubernetesService.getResource(
+      kubeconfig,
+      kind,
+      name,
+      FLUI_CONTROL_NAMESPACE,
+    );
+    if (current) {
+      return current;
+    }
+    return this.kubernetesService.getResource(
+      kubeconfig,
+      kind,
+      name,
+      FLUI_LEGACY_CONTROL_NAMESPACE,
+    );
+  }
 
   private renderTemplate(
     templateName: string,
@@ -364,10 +394,14 @@ export class ObservabilityClusterService {
       {
         kind: 'Deployment',
         name: 'prometheus',
-        namespace: 'flui-observability',
+        namespace: FLUI_CONTROL_NAMESPACE,
       },
-      { kind: 'Deployment', name: 'loki', namespace: 'flui-observability' },
-      { kind: 'Deployment', name: 'grafana', namespace: 'flui-observability' },
+      { kind: 'Deployment', name: 'loki', namespace: FLUI_CONTROL_NAMESPACE },
+      {
+        kind: 'Deployment',
+        name: 'grafana',
+        namespace: FLUI_CONTROL_NAMESPACE,
+      },
     ];
 
     for (const resource of resources) {

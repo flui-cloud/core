@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
 import { printContextBanner } from '../../lib/context-banner';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliNodeRepository } from '../../lib/repositories/cli-node.repository';
 import { NodeType } from 'src/modules/infrastructure/clusters/entities/cluster-node.entity';
 import { CliSshService } from '../../services/cli-ssh.service';
@@ -32,13 +32,13 @@ export default class EnvUncordon extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const nodeRepo = app.get(CliNodeRepository);
       const ssh = app.get(CliSshService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
       if (!cluster) {
-        spinner.fail('No observability cluster found');
+        spinner.fail('No control cluster found');
         return;
       }
       const nodes = await nodeRepo.find({ where: { clusterId: cluster.id } });

@@ -11,7 +11,7 @@ const MAX_WAIT_MS = 600_000;
 
 export default class ClusterDestroy extends Command {
   static readonly description =
-    'Permanently destroy a workload cluster and all its nodes. For the observability cluster use `flui env destroy`.';
+    'Permanently destroy a workload cluster and all its nodes. For the control cluster use `flui env destroy`.';
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %> my-workload-cluster',
@@ -60,7 +60,7 @@ export default class ClusterDestroy extends Command {
 
     if (entity.metadata?.isObservabilityCluster) {
       this.error(
-        `"${clusterName}" is the observability cluster. Use \`flui env destroy\` instead.`,
+        `"${clusterName}" is the control cluster. Use \`flui env destroy\` instead.`,
         { exit: 1 },
       );
     }

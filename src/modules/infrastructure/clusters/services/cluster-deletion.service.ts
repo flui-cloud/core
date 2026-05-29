@@ -173,13 +173,13 @@ export class ClusterDeletionService {
   }
 
   /**
-   * Remove workload cluster datasources from Grafana observability cluster
+   * Remove workload cluster datasources from Grafana control cluster
    * Called automatically before cluster deletion
    */
   private async removeClusterFromGrafana(
     cluster: ClusterEntity,
   ): Promise<void> {
-    // Only remove datasources for WORKLOAD clusters (not OBSERVABILITY clusters)
+    // Only remove datasources for WORKLOAD clusters (not control clusters)
     if (cluster.clusterType !== ClusterType.WORKLOAD) {
       this.logger.debug(
         `Skipping Grafana datasource removal for ${cluster.clusterType} cluster ${cluster.name}`,

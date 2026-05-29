@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import {
@@ -61,9 +61,10 @@ export class ClusterCreationService {
 
     // Determine cluster type from metadata
     const metadata = dto.metadata || {};
-    const clusterType = metadata.isObservabilityCluster
-      ? ClusterType.OBSERVABILITY
-      : ClusterType.WORKLOAD;
+    const clusterType =
+      metadata.isControlCluster || metadata.isObservabilityCluster
+        ? ClusterType.CONTROL
+        : ClusterType.WORKLOAD;
 
     // Resolve the environment-level VNet/Subnet (seeded at bootstrap by the CLI).
     // Every cluster — observability or workload — joins the same private network
@@ -252,7 +253,9 @@ export class ClusterCreationService {
     }
 
     const control = await this.clusterRepository.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (control && control.provider !== dto.provider) {
       throw new BadRequestException({

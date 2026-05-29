@@ -2,7 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { SystemAppCatalogService } from '../../applications/services/system-app-catalog.service';
 import {
   InfrastructureOperationEntity,
@@ -75,7 +75,7 @@ export class AuthzInstallProcessor {
         status: AuthzInstallStatus.INSTALLING,
       });
 
-      // Read OIDC config from observability cluster
+      // Read OIDC config from control cluster
       const { jwksUri, audience, issuer, dashboardUrl } =
         await this.readOidcConfig();
 
@@ -217,12 +217,12 @@ export class AuthzInstallProcessor {
     dashboardUrl: string;
   }> {
     const obsCluster = await this.clusterRepo.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!obsCluster?.kubeconfigEncrypted) {
-      throw new Error(
-        'Observability cluster not found — cannot read OIDC config',
-      );
+      throw new Error('Control cluster not found — cannot read OIDC config');
     }
     const kubeconfig = this.encryptionService.decrypt(
       obsCluster.kubeconfigEncrypted,

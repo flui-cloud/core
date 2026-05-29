@@ -11,6 +11,7 @@ import { FirewallEntity } from '../entities/firewall.entity';
 import {
   ClusterEntity,
   ClusterType,
+  isControlClusterType,
 } from '../../clusters/entities/cluster.entity';
 import { FirewallProviderFactory } from '../../../providers/services/firewall-provider.factory';
 import { LabelService } from '../../shared/services/label.service';
@@ -173,10 +174,9 @@ export class FirewallsService {
 
     // Use default rules based on cluster type
     const sourceCidrs = config?.sourceCidrs || ['0.0.0.0/0', '::/0']; // Allow all if no CIDRs
-    const clusterType =
-      cluster.clusterType === ClusterType.OBSERVABILITY
-        ? 'observability'
-        : 'workload';
+    const clusterType = isControlClusterType(cluster.clusterType)
+      ? 'control'
+      : 'workload';
 
     this.logger.log(
       `Using default ${clusterType} firewall rules for cluster ${cluster.id}`,

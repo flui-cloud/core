@@ -11,6 +11,8 @@ export enum RestoreTargetKind {
   CLUSTER = 'cluster',
   NAMESPACE = 'namespace',
   APPLICATION = 'application',
+  CONTROL = 'control',
+  /** @deprecated legacy alias for CONTROL; accepted for back-compat. */
   OBSERVABILITY = 'observability',
 }
 

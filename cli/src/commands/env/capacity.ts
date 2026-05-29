@@ -2,7 +2,7 @@ import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { ClusterCapacityService } from 'src/modules/infrastructure/clusters/services/cluster-capacity.service';
 import {
   ClusterCapacityPlanDto,
@@ -42,12 +42,12 @@ export default class EnvCapacity extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const capacityService = app.get(ClusterCapacityService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
       if (!cluster) {
-        spinner.fail('No observability cluster found');
+        spinner.fail('No control cluster found');
         console.log(
           chalk.yellow(
             '\n⚠️  Create a cluster first: ' + chalk.cyan('flui env create\n'),

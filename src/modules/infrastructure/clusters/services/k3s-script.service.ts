@@ -24,7 +24,7 @@ export interface K3sMasterConfig {
   redisPassword?: string;
   grafanaPassword?: string;
   // Multi-cluster observability
-  observabilityClusterIp?: string;
+  controlClusterIp?: string;
   deployMonitoringAgent?: boolean;
   // Master node IP address for Prometheus configuration
   masterIp?: string;
@@ -79,7 +79,7 @@ export interface K3sWorkerConfig {
   provider: string;
   caPublicKey?: string;
   // Multi-cluster observability
-  observabilityClusterIp?: string;
+  controlClusterIp?: string;
   // Private IP on the environment VNet for K3s --node-ip on the worker.
   privateIp?: string;
   // Bootstrap SSH public key for providers without SSH key registry (e.g. Scaleway)
@@ -118,7 +118,7 @@ export class K3sScriptService {
         if (!config.grafanaPassword) missing.push('grafanaPassword');
         if (missing.length > 0) {
           throw new Error(
-            `Cannot bootstrap observability cluster ${config.clusterName}: missing required secrets [${missing.join(', ')}]. The caller must generate or provide them before invoking generateMasterScript.`,
+            `Cannot bootstrap control cluster ${config.clusterName}: missing required secrets [${missing.join(', ')}]. The caller must generate or provide them before invoking generateMasterScript.`,
           );
         }
       }
@@ -144,14 +144,14 @@ export class K3sScriptService {
         `   - DEPLOY_OBSERVABILITY_STACK: ${config.deployObservabilityStack ? 'true' : 'false'}`,
       );
       this.logger.log(
-        `   - OBSERVABILITY_CLUSTER_IP: ${config.observabilityClusterIp || '(empty - will use localhost)'}`,
+        `   - OBSERVABILITY_CLUSTER_IP: ${config.controlClusterIp || '(empty - will use localhost)'}`,
       );
       this.logger.log(
         `   - DEPLOY_MONITORING_AGENT: ${config.deployMonitoringAgent ? 'true' : 'false'}`,
       );
 
       // Prometheus HTTP SD calls this endpoint to discover scrape targets.
-      // Observability cluster: Prometheus is in-cluster, use the K8s service URL directly.
+      // Control cluster: Prometheus is in-cluster, use the K8s service URL directly.
       // Dev: fall back to WEBHOOK_BASE_URL (ngrok/tunnel).
       const rawFluiApiEndpoint = process.env.FLUI_API_ENDPOINT || '';
       const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(
@@ -171,19 +171,19 @@ export class K3sScriptService {
           this.logger.log(`   - FLUI_API_ENDPOINT: ${fluiApiEndpoint}`);
         } else {
           this.logger.warn(
-            `   ⚠️  OBSERVABILITY cluster but FLUI_API_ENDPOINT/WEBHOOK_BASE_URL is empty — Prometheus HTTP SD will fail to reach the API. Set one of these in the API environment.`,
+            `   ⚠️  control cluster but FLUI_API_ENDPOINT/WEBHOOK_BASE_URL is empty — Prometheus HTTP SD will fail to reach the API. Set one of these in the API environment.`,
           );
         }
         this.logger.log(
-          `   ℹ️  This is an OBSERVABILITY cluster - will deploy Loki/Prometheus locally`,
+          `   ℹ️  This is an control cluster - will deploy Loki/Prometheus locally`,
         );
-      } else if (config.observabilityClusterIp) {
+      } else if (config.controlClusterIp) {
         this.logger.log(
-          `   ℹ️  This is a WORKLOAD cluster - will send logs to ${config.observabilityClusterIp}:30100`,
+          `   ℹ️  This is a WORKLOAD cluster - will send logs to ${config.controlClusterIp}:30100`,
         );
       } else {
         this.logger.warn(
-          `   ⚠️  This is a WORKLOAD cluster but NO observability cluster IP provided - will use localhost (monitoring may not work)`,
+          `   ⚠️  This is a WORKLOAD cluster but NO control cluster IP provided - will use localhost (monitoring may not work)`,
         );
       }
 
@@ -216,7 +216,7 @@ export class K3sScriptService {
           SSH_CA_PUBLIC_KEY: config.caPublicKey || '',
           SSH_CA_PRIVATE_KEY: config.caPrivateKey || '',
           // Multi-cluster observability
-          OBSERVABILITY_CLUSTER_IP: config.observabilityClusterIp || '',
+          OBSERVABILITY_CLUSTER_IP: config.controlClusterIp || '',
           DEPLOY_MONITORING_AGENT: config.deployMonitoringAgent
             ? 'true'
             : 'false',
@@ -295,7 +295,7 @@ export class K3sScriptService {
           MASTER_IP: config.masterIp,
           FLUI_CA_PUBLIC_KEY: config.caPublicKey || '',
           // Multi-cluster observability
-          OBSERVABILITY_CLUSTER_IP: config.observabilityClusterIp || '',
+          OBSERVABILITY_CLUSTER_IP: config.controlClusterIp || '',
           PRIVATE_IP: config.privateIp || '',
           // Flui shared storage (NFS+fscache, §14 of scaling doc)
           FLUI_SHARED_STORAGE_ENABLED: config.sharedStorage?.enabled

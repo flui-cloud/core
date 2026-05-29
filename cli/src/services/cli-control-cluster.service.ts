@@ -19,14 +19,14 @@ import * as https from 'node:https';
 import { TLSSocket } from 'node:tls';
 
 /**
- * CLI Observability Cluster Service
+ * CLI Control Cluster Service
  *
  * Simplified version of ObservabilityClusterService for CLI usage.
  * Uses file-based repositories instead of TypeORM.
  */
 @Injectable()
-export class CliObservabilityClusterService {
-  private readonly logger = new Logger(CliObservabilityClusterService.name);
+export class CliControlClusterService {
+  private readonly logger = new Logger(CliControlClusterService.name);
 
   constructor(
     private readonly clusterRepository: CliClusterRepository,
@@ -37,9 +37,9 @@ export class CliObservabilityClusterService {
   ) {}
 
   /**
-   * Get the observability cluster
+   * Get the control cluster
    */
-  async getObservabilityCluster(): Promise<ClusterEntity | null> {
+  async getControlCluster(): Promise<ClusterEntity | null> {
     const cluster = await this.clusterRepository.findOne({
       where: {
         metadata: { isObservabilityCluster: true },
@@ -60,10 +60,10 @@ export class CliObservabilityClusterService {
   }
 
   /**
-   * Check if observability cluster exists
+   * Check if control cluster exists
    */
-  async hasObservabilityCluster(): Promise<boolean> {
-    const cluster = await this.getObservabilityCluster();
+  async hasControlCluster(): Promise<boolean> {
+    const cluster = await this.getControlCluster();
     return cluster !== null;
   }
 
@@ -101,9 +101,9 @@ export class CliObservabilityClusterService {
   }
 
   /**
-   * Create observability cluster
+   * Create control cluster
    */
-  async createObservabilityCluster(
+  async createControlCluster(
     provider: string,
     region: string,
     nodeSize: string,
@@ -128,7 +128,7 @@ export class CliObservabilityClusterService {
     },
   ): Promise<string> {
     const createDto = {
-      name: `observability-cluster-${Date.now()}`,
+      name: 'control-cluster',
       provider: provider as CloudProvider,
       region,
       nodeSize,
@@ -163,9 +163,9 @@ export class CliObservabilityClusterService {
   }
 
   /**
-   * Delete observability cluster
+   * Delete control cluster
    */
-  async deleteObservabilityCluster(): Promise<void> {
+  async deleteControlCluster(): Promise<void> {
     // Local clusters.json can accumulate stale observability entries (e.g. a
     // previous destroy died mid-way, or a create crashed after persisting).
     // findOne would only catch one — so we iterate and purge all matches.
@@ -174,12 +174,12 @@ export class CliObservabilityClusterService {
     });
 
     if (clusters.length === 0) {
-      throw new Error('No observability cluster found');
+      throw new Error('No control cluster found');
     }
 
     if (clusters.length > 1) {
       this.logger.warn(
-        `Found ${clusters.length} observability cluster records — removing all to clear stale state`,
+        `Found ${clusters.length} control cluster records — removing all to clear stale state`,
       );
     }
 
@@ -492,10 +492,12 @@ export class CliObservabilityClusterService {
       fluiWeb: 'healthy' | 'unreachable';
     };
 
+    // Match by (unique) workload name only — the observability stack lives in
+    // `flui-control` on new installs and `flui-observability` on legacy ones.
     const lookups: Lookup[] = [
-      { ns: 'flui-observability', name: 'vmsingle', key: 'prometheus' },
-      { ns: 'flui-observability', name: 'grafana', key: 'grafana' },
-      { ns: 'flui-observability', name: 'loki', key: 'loki' },
+      { ns: 'control', name: 'vmsingle', key: 'prometheus' },
+      { ns: 'control', name: 'grafana', key: 'grafana' },
+      { ns: 'control', name: 'loki', key: 'loki' },
       { ns: 'flui-system', name: 'postgres', key: 'postgres' },
       { ns: 'flui-system', name: 'redis', key: 'redis' },
       { ns: 'flui-system', name: 'flui-api', key: 'fluiApi' },
@@ -520,11 +522,13 @@ export class CliObservabilityClusterService {
 
     try {
       const combined =
+        `(kubectl -n flui-control get deploy,statefulset -o json 2>/dev/null || echo '{"items":[]}') ; ` +
+        `echo '---FLUI-SEP---' ; ` +
         `(kubectl -n flui-observability get deploy,statefulset -o json 2>/dev/null || echo '{"items":[]}') ; ` +
         `echo '---FLUI-SEP---' ; ` +
         `(kubectl -n flui-system get deploy,statefulset -o json 2>/dev/null || echo '{"items":[]}')`;
       const raw = await this.sshService.sshExec(masterIp, combined);
-      const [obsRaw, sysRaw] = raw.split('---FLUI-SEP---');
+      const [controlRaw, legacyRaw, sysRaw] = raw.split('---FLUI-SEP---');
 
       const collect = (json: string): WorkloadItem[] => {
         try {
@@ -534,13 +538,18 @@ export class CliObservabilityClusterService {
           return [];
         }
       };
-      const items = [...collect(obsRaw || ''), ...collect(sysRaw || '')];
+      const items = [
+        ...collect(controlRaw || ''),
+        ...collect(legacyRaw || ''),
+        ...collect(sysRaw || ''),
+      ];
 
       for (const lookup of lookups) {
-        const item = items.find(
-          (i) =>
-            i.metadata?.name === lookup.name &&
-            i.metadata?.namespace === lookup.ns,
+        const item = items.find((i) =>
+          lookup.ns === 'control'
+            ? i.metadata?.name === lookup.name
+            : i.metadata?.name === lookup.name &&
+              i.metadata?.namespace === lookup.ns,
         );
         const replicas = item?.status?.replicas ?? 0;
         const ready = item?.status?.readyReplicas ?? 0;

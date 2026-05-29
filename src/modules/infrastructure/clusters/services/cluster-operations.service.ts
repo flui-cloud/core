@@ -55,7 +55,7 @@ export class ClusterOperationsService {
     this.logger.debug(`   - Region: ${dto.region}`);
     this.logger.debug(`   - Master IP: ${dto.masterIpAddress}`);
     this.logger.debug(
-      `   - Cluster Type: ${dto.metadata?.isObservabilityCluster ? 'OBSERVABILITY' : 'WORKLOAD'}`,
+      `   - Cluster Type: ${dto.metadata?.isControlCluster || dto.metadata?.isObservabilityCluster ? 'CONTROL' : 'WORKLOAD'}`,
     );
     this.logger.debug(`   - K3s Version: ${dto.k3sVersion || 'not provided'}`);
 
@@ -86,17 +86,20 @@ export class ClusterOperationsService {
     }
 
     const kubeconfigEncrypted = dto.kubeconfigEncrypted;
-    const isObservability = !!dto.metadata?.isObservabilityCluster;
+    const isControl = !!(
+      dto.metadata?.isControlCluster || dto.metadata?.isObservabilityCluster
+    );
 
-    if (!kubeconfigEncrypted && !isObservability) {
+    if (!kubeconfigEncrypted && !isControl) {
       throw new BadRequestException(
         'kubeconfigEncrypted is required for cluster registration',
       );
     }
 
-    const clusterType = dto.metadata?.isObservabilityCluster
-      ? ClusterType.OBSERVABILITY
-      : ClusterType.WORKLOAD;
+    const clusterType =
+      dto.metadata?.isControlCluster || dto.metadata?.isObservabilityCluster
+        ? ClusterType.CONTROL
+        : ClusterType.WORKLOAD;
 
     const cluster = this.clusterRepository.create({
       ...(dto.clusterId ? { id: dto.clusterId } : {}),

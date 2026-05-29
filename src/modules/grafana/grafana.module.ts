@@ -16,11 +16,11 @@ import { GrafanaDatasourceService } from './services/grafana-datasource.service'
  * - Manage Grafana datasources lifecycle (add/remove on cluster create/delete)
  *
  * Architecture:
- * - GrafanaConfigService: Retrieves Grafana credentials from observability cluster
+ * - GrafanaConfigService: Retrieves Grafana credentials from control cluster
  * - GrafanaDatasourceService: Manages datasources via Grafana HTTP API
  *
  * Dependencies:
- * - TypeORM (ClusterEntity): Direct database access to query observability cluster
+ * - TypeORM (ClusterEntity): Direct database access to query control cluster
  * - No dependency on ClustersModule or ObservabilityModule (breaks circular dependency)
  *
  * Used by:

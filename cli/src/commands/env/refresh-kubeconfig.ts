@@ -2,7 +2,7 @@ import { Command } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { CliClusterRepository } from '../../lib/repositories/cli-cluster.repository';
 import { EncryptionService } from 'src/modules/shared/encryption/services/encryption.service';
@@ -22,15 +22,15 @@ export default class EnvRefreshKubeconfig extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const sshService = app.get(CliSshService);
       const clusterRepo = app.get(CliClusterRepository);
       const encryptionService = app.get(EncryptionService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
+        spinner.fail('No control cluster found');
         return;
       }
 

@@ -4,14 +4,14 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
 import { buildNipBaseDomain } from '../../lib/nip-base-domain.util';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { CloudProvider } from 'src/modules/providers/enums/cloud-provider.enum';
 import { ClusterStatus } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
 import { FirewallProviderFactory } from 'src/modules/providers/core/factories/firewall-provider.factory';
 import { IpDetectionService } from '../../lib/utils/ip-detection';
 import { CliFirewallRepository } from '../../lib/repositories/cli-firewall.repository';
-import { OBSERVABILITY_FIREWALL_RULES } from '../../lib/templates/firewall-rules';
+import { CONTROL_FIREWALL_RULES } from '../../lib/templates/firewall-rules';
 import { VnetProvisioningService } from '../../lib/services/vnet-provisioning.service';
 import { ApiClient } from '../../lib/api-client';
 import { ConfigStorage } from '../../lib/config-storage';
@@ -37,8 +37,7 @@ import { PreferencesResolver } from '../../config/preferences-resolver';
 import { PREFERENCES } from '../../config/preferences-schema';
 
 export default class EnvCreate extends Command {
-  static readonly description =
-    'Create observability cluster infrastructure on K3s';
+  static readonly description = 'Create control cluster infrastructure on K3s';
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -51,7 +50,7 @@ export default class EnvCreate extends Command {
   static readonly flags = {
     provider: Flags.string({
       char: 'p',
-      description: 'Cloud provider for the observability cluster',
+      description: 'Cloud provider for the control cluster',
       default: 'hetzner',
       options: ['hetzner', 'scaleway'],
     }),
@@ -158,7 +157,7 @@ export default class EnvCreate extends Command {
       spinner = ora('Loading services...').start();
       const configStorage = new ConfigStorage();
       const apiUrl = configStorage.getApiUrl();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const apiClient = new ApiClient({
         baseUrl: apiUrl,
         apiKey: configStorage.getApiKey(),
@@ -412,23 +411,20 @@ export default class EnvCreate extends Command {
       }
 
       // Display cluster configuration
-      console.log(
-        chalk.cyan('\n🚀 Creating Flui Observability Cluster (K3s)\n'),
-      );
+      console.log(chalk.cyan('\n🚀 Creating Flui Control Cluster (K3s)\n'));
       console.log(chalk.dim(`   Provider: ${providerKey}`));
       console.log(chalk.dim(`   Node Size: ${validatedNodeSize}`));
       console.log(chalk.dim(`   Region: ${validatedRegion}`));
       console.log(chalk.dim(`   Worker Nodes: ${flags['node-count']}\n`));
 
-      // 3. Check if observability cluster already exists
+      // 3. Check if control cluster already exists
       spinner = ora('Checking for existing cluster...').start();
-      const existingCluster =
-        await observabilityService.getObservabilityCluster();
+      const existingCluster = await controlService.getControlCluster();
 
       if (existingCluster && existingCluster.status !== ClusterStatus.DELETED) {
-        spinner.fail('Observability cluster already exists!');
+        spinner.fail('Control cluster already exists!');
         console.log(
-          chalk.yellow('\n⚠️  An observability cluster is already running:\n'),
+          chalk.yellow('\n⚠️  An control cluster is already running:\n'),
         );
         console.log(`   ${chalk.bold('Name:')}     ${existingCluster.name}`);
         console.log(`   ${chalk.bold('ID:')}       ${existingCluster.id}`);
@@ -477,7 +473,7 @@ export default class EnvCreate extends Command {
         spinner.fail(`VNet provisioning failed: ${(error as Error).message}`);
         console.log(
           chalk.red(
-            '\n   Cannot proceed without an environment VNet. The observability cluster and all workload clusters must share a private network.',
+            '\n   Cannot proceed without an environment VNet. The control cluster and all workload clusters must share a private network.',
           ),
         );
         this.exit(1);
@@ -502,8 +498,8 @@ export default class EnvCreate extends Command {
             sourceCidrs = [ipService.toCidr(publicIp)];
           }
 
-          const rules = OBSERVABILITY_FIREWALL_RULES(sourceCidrs);
-          const temporaryFirewallName = `flui-observability-firewall-${Date.now()}`;
+          const rules = CONTROL_FIREWALL_RULES(sourceCidrs);
+          const temporaryFirewallName = 'flui-control-firewall';
 
           // Create firewall with temporary name (will be renamed when cluster is ready)
           const result = await firewallService.createFirewall({
@@ -511,7 +507,7 @@ export default class EnvCreate extends Command {
             labels: [
               { key: 'managed-by', value: 'flui-cloud' },
               { key: 'flui-resource-type', value: 'firewall' },
-              { key: 'flui-cluster-type', value: 'observability' },
+              { key: 'flui-cluster-type', value: 'control' },
             ],
             rules,
             // Label selector will be applied later when cluster servers exist
@@ -558,7 +554,7 @@ export default class EnvCreate extends Command {
         ),
       );
 
-      const clusterId = await observabilityService.createObservabilityCluster(
+      const clusterId = await controlService.createControlCluster(
         cloudProvider,
         validatedRegion,
         validatedNodeSize,
@@ -610,9 +606,7 @@ export default class EnvCreate extends Command {
 
       if (flags.detached) {
         // DETACHED MODE: Exit immediately with monitoring instructions
-        console.log(
-          chalk.green('\n✅ Observability Cluster Creation Started!\n'),
-        );
+        console.log(chalk.green('\n✅ Control Cluster Creation Started!\n'));
         console.log(chalk.cyan('📋 Cluster Details:\n'));
         console.log(`   ${chalk.bold('Cluster ID:')}  ${clusterId}`);
         console.log(`   ${chalk.bold('Provider:')}    ${cloudProvider}`);
@@ -653,7 +647,7 @@ export default class EnvCreate extends Command {
         spinner = ora('Waiting for cluster to be ready...').start();
 
         try {
-          await observabilityService.waitForClusterReady(clusterId, 600000);
+          await controlService.waitForClusterReady(clusterId, 600000);
           spinner.succeed('Cluster is ready!');
         } catch (error) {
           spinner.fail('Failed to wait for cluster');
@@ -662,7 +656,7 @@ export default class EnvCreate extends Command {
         }
 
         console.log(
-          chalk.green('\n✅ Observability Cluster Created Successfully!\n'),
+          chalk.green('\n✅ Control Cluster Created Successfully!\n'),
         );
         console.log(chalk.cyan('📋 Cluster Details:\n'));
         console.log(`   ${chalk.bold('Cluster ID:')}  ${clusterId}`);
@@ -708,7 +702,7 @@ export default class EnvCreate extends Command {
         let shouldExit = false;
 
         const onReconcile = async (): Promise<void> => {
-          const cluster = await observabilityService.getObservabilityCluster();
+          const cluster = await controlService.getControlCluster();
           const masterIp = cluster?.masterIpAddress;
           const nipToken = cluster?.nipHostnameToken;
           const baseDomain = buildNipBaseDomain(masterIp ?? '', nipToken);
@@ -727,7 +721,7 @@ export default class EnvCreate extends Command {
             const deadline = Date.now() + maxWait;
 
             while (Date.now() < deadline) {
-              const valid = await observabilityService.waitForValidTls(
+              const valid = await controlService.waitForValidTls(
                 certUrl,
                 interval,
                 interval,
@@ -742,7 +736,7 @@ export default class EnvCreate extends Command {
               );
             }
 
-            const tlsReady = await observabilityService.waitForValidTls(
+            const tlsReady = await controlService.waitForValidTls(
               certUrl,
               5_000,
               5_000,
@@ -799,7 +793,7 @@ export default class EnvCreate extends Command {
               console.log(
                 chalk.dim(`\n→ Waiting for OIDC client provisioning...`),
               );
-              const oidcReady = await observabilityService.waitForOidcReady(
+              const oidcReady = await controlService.waitForOidcReady(
                 apiBaseUrl,
                 300_000,
                 10_000,
@@ -853,7 +847,7 @@ export default class EnvCreate extends Command {
           shouldExit = true;
         };
 
-        pollerHandle = observabilityService.pollOperationUntilReady(
+        pollerHandle = controlService.pollOperationUntilReady(
           clusterId,
           onReconcile,
           onFailed,
@@ -863,7 +857,7 @@ export default class EnvCreate extends Command {
         spinner = ora('Provisioning server...').start();
         let masterIp: string;
         try {
-          masterIp = await observabilityService.waitForMasterIp(
+          masterIp = await controlService.waitForMasterIp(
             clusterId,
             600000,
             5000,
@@ -887,12 +881,7 @@ export default class EnvCreate extends Command {
         // Phase 2: Wait for server boot (SSH port open)
         spinner = ora('Server booting...').start();
         try {
-          await observabilityService.waitForPortReady(
-            masterIp,
-            22,
-            600000,
-            5000,
-          );
+          await controlService.waitForPortReady(masterIp, 22, 600000, 5000);
           spinner.succeed('Server online');
         } catch (error) {
           spinner.fail('Server did not come online in time');
@@ -910,7 +899,7 @@ export default class EnvCreate extends Command {
         // Phase 3: Wait for SSH authentication (CA enrollment via cloud-init)
         spinner = ora('Waiting for SSH access (CA enrollment)...').start();
         try {
-          await observabilityService.waitForSshAuth(
+          await controlService.waitForSshAuth(
             () => sshService.sshExec(masterIp, 'echo ok'),
             600000,
             10000,
@@ -1000,7 +989,7 @@ export default class EnvCreate extends Command {
         }
       }
     } catch (error) {
-      spinner.fail('Failed to create observability cluster');
+      spinner.fail('Failed to create control cluster');
 
       if (firewallId) {
         try {

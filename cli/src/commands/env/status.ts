@@ -2,7 +2,7 @@ import { Command } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import {
   CliEndpointResolverService,
   SystemEndpoints,
@@ -13,7 +13,7 @@ import { ConfigStorage } from '../../lib/config-storage';
 import { buildNipBaseDomain } from '../../lib/nip-base-domain.util';
 
 export default class EnvStatus extends Command {
-  static readonly description = 'Check observability cluster status';
+  static readonly description = 'Check control cluster status';
 
   static readonly examples = ['<%= config.bin %> <%= command.id %>'];
 
@@ -23,14 +23,14 @@ export default class EnvStatus extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const resolver = app.get(CliEndpointResolverService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;
@@ -46,7 +46,7 @@ export default class EnvStatus extends Command {
         }
       }
 
-      console.log(chalk.cyan('\n📋 Observability Cluster Status\n'));
+      console.log(chalk.cyan('\n📋 Control Cluster Status\n'));
       console.log(`   ${chalk.bold('Name:')}       ${cluster.name}`);
       console.log(`   ${chalk.bold('ID:')}         ${cluster.id}`);
       console.log(
@@ -77,7 +77,7 @@ export default class EnvStatus extends Command {
 
       if (cluster.status === ClusterStatus.READY && cluster.masterIpAddress) {
         spinner = await this.renderObservabilityHealth(
-          observabilityService,
+          controlService,
           cluster.masterIpAddress,
           cluster.nipHostnameToken,
           spinner,
@@ -119,7 +119,7 @@ export default class EnvStatus extends Command {
   }
 
   private async renderObservabilityHealth(
-    observabilityService: CliObservabilityClusterService,
+    controlService: CliControlClusterService,
     masterIp: string,
     nipHostnameToken: string | null | undefined,
     initialSpinner: ReturnType<typeof ora>,
@@ -127,11 +127,10 @@ export default class EnvStatus extends Command {
     initialSpinner.stop();
     const spinner = ora('Checking observability services...').start();
     try {
-      const servicesHealth =
-        await observabilityService.checkObservabilityServices(
-          masterIp,
-          nipHostnameToken,
-        );
+      const servicesHealth = await controlService.checkObservabilityServices(
+        masterIp,
+        nipHostnameToken,
+      );
       spinner.succeed('Services health checked');
 
       console.log(chalk.cyan('\n📊 Observability Services Status:\n'));

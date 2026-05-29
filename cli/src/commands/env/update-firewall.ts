@@ -3,17 +3,17 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
 import { buildNipBaseDomain } from '../../lib/nip-base-domain.util';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { FirewallProviderFactory } from '../../../../src/modules/providers/core/factories/firewall-provider.factory';
 import { CloudProvider } from '../../../../src/modules/providers/enums/cloud-provider.enum';
 import { IpDetectionService } from '../../lib/utils/ip-detection';
 import { CliFirewallRepository } from '../../lib/repositories/cli-firewall.repository';
-import { OBSERVABILITY_FIREWALL_RULES } from '../../lib/templates/firewall-rules';
+import { CONTROL_FIREWALL_RULES } from '../../lib/templates/firewall-rules';
 import { printContextBanner } from '../../lib/context-banner';
 
 export default class EnvUpdateFirewall extends Command {
   static readonly description =
-    'Create or update firewall IP ranges for observability cluster';
+    'Create or update firewall IP ranges for control cluster';
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -36,16 +36,16 @@ export default class EnvUpdateFirewall extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const ipService = app.get(IpDetectionService);
       const firewallFactory = app.get(FirewallProviderFactory);
       const firewallRepo = app.get(CliFirewallRepository);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;
@@ -122,7 +122,7 @@ export default class EnvUpdateFirewall extends Command {
 
       if (existingFirewall) {
         spinner.text = 'Updating firewall rules...';
-        const newRules = OBSERVABILITY_FIREWALL_RULES(sourceCidrs);
+        const newRules = CONTROL_FIREWALL_RULES(sourceCidrs);
 
         await firewallService.updateFirewallRules(
           existingFirewall.id,
@@ -138,8 +138,8 @@ export default class EnvUpdateFirewall extends Command {
         spinner.succeed('Firewall updated successfully');
       } else {
         spinner.text = 'Creating firewall...';
-        const firewallName = `flui-observability-${cluster.id}`;
-        const rules = OBSERVABILITY_FIREWALL_RULES(sourceCidrs);
+        const firewallName = `flui-control-${cluster.id}`;
+        const rules = CONTROL_FIREWALL_RULES(sourceCidrs);
 
         const result = await firewallService.createFirewall({
           name: firewallName,
@@ -147,7 +147,7 @@ export default class EnvUpdateFirewall extends Command {
             { key: 'managed-by', value: 'flui-cloud' },
             { key: 'flui-resource-type', value: 'firewall' },
             { key: 'flui-cluster-id', value: cluster.id },
-            { key: 'flui-cluster-type', value: 'observability' },
+            { key: 'flui-cluster-type', value: 'control' },
           ],
           rules,
           applyToLabelSelector: `flui-cluster-id=${cluster.id}`,

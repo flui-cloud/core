@@ -307,7 +307,7 @@ export class ClustersController {
   @ApiOperation({
     summary: 'Register an existing cluster',
     description:
-      'Registers an existing cluster (e.g., observability cluster) into the database ' +
+      'Registers an existing cluster (e.g., control cluster) into the database ' +
       'without creating new infrastructure. This enables metrics monitoring via the API.',
   })
   @ApiBody({ type: RegisterClusterDto })
@@ -570,7 +570,7 @@ export class ClustersController {
     summary: 'Update cluster metadata',
     description:
       'Merges new metadata with existing cluster metadata. ' +
-      'If isObservabilityCluster is updated, the cluster type will be automatically adjusted.',
+      'If isControlCluster (legacy: isObservabilityCluster) is set, the cluster type will be automatically adjusted.',
   })
   @ApiParam({
     name: 'id',

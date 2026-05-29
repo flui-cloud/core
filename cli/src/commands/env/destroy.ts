@@ -3,14 +3,14 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
 import { printContextBanner } from '../../lib/context-banner';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { ConfigStorage } from '../../lib/config-storage';
 import { confirmByTypingPrompt } from '../../lib/prompts';
 import { VnetProvisioningService } from '../../lib/services/vnet-provisioning.service';
 
 export default class EnvDestroy extends Command {
   static readonly description =
-    'Permanently delete observability cluster (WARNING: All data will be lost!)';
+    'Permanently delete control cluster (WARNING: All data will be lost!)';
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -36,16 +36,16 @@ export default class EnvDestroy extends Command {
       const app = await getNestApp();
       spinner.stop();
 
-      console.log(chalk.red('\n⚠️  DESTROY Observability Cluster\n'));
+      console.log(chalk.red('\n⚠️  DESTROY Control Cluster\n'));
       spinner = ora('Checking for cluster...').start();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
 
-      // Find observability cluster
-      const cluster = await observabilityService.getObservabilityCluster();
+      // Find control cluster
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;
@@ -108,7 +108,7 @@ export default class EnvDestroy extends Command {
       }).start();
 
       try {
-        await observabilityService.deleteObservabilityCluster();
+        await controlService.deleteControlCluster();
         spinner.succeed('All cluster resources deleted successfully');
       } catch (error) {
         spinner.fail('Cluster deletion encountered an error');
@@ -148,9 +148,7 @@ export default class EnvDestroy extends Command {
         );
       }
 
-      console.log(
-        chalk.green('\n✅ Observability Cluster Deleted Successfully\n'),
-      );
+      console.log(chalk.green('\n✅ Control Cluster Deleted Successfully\n'));
       console.log(chalk.dim('   All cluster resources have been removed:'));
       console.log(chalk.dim('   • Servers (master and worker nodes)'));
       console.log(chalk.dim('   • Firewalls and security rules'));

@@ -578,7 +578,7 @@ export class BootstrapSeeder implements OnModuleInit {
       sharedStorageVolumeId: sharedStorageVolumeId ?? null,
       sharedStorageVolumeSizeGb: sharedStorageVolumeSizeGb ?? null,
       status: ClusterStatus.READY,
-      clusterType: ClusterType.OBSERVABILITY,
+      clusterType: ClusterType.CONTROL,
       metadata: {
         source: 'bootstrap-seeder',
         ...(vnetConfig ? { vnetConfig } : {}),

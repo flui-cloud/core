@@ -13,7 +13,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CloudProvider } from 'src/modules/providers/enums/cloud-provider.enum';
 
 /**
- * DTO for registering an existing cluster (e.g., observability cluster)
+ * DTO for registering an existing cluster (e.g., control cluster)
  * into the database without creating new infrastructure.
  */
 export class RegisterClusterDto {
@@ -40,7 +40,7 @@ export class RegisterClusterDto {
   nodeId?: string;
 
   @ApiProperty({
-    example: 'observability-cluster-1767092311382',
+    example: 'control-cluster',
     minLength: 3,
     maxLength: 63,
     description: 'Cluster name',
@@ -105,8 +105,8 @@ export class RegisterClusterDto {
 
   @ApiPropertyOptional({
     example: {
-      isObservabilityCluster: true,
-      purpose: 'observability',
+      isControlCluster: true,
+      purpose: 'control',
     },
     description: 'Cluster metadata.',
   })

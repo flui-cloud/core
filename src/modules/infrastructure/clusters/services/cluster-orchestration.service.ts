@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
@@ -8,6 +8,7 @@ import {
   ClusterEntity,
   ClusterStatus,
   ClusterType,
+  isControlClusterType,
 } from '../entities/cluster.entity';
 import {
   ClusterNodeEntity,
@@ -155,8 +156,7 @@ export class ClusterOrchestrationService {
 
     const { caPublicKey, caPrivateKey } = await this.loadCaKeyPair();
 
-    const observabilityClusterIp =
-      await this.resolveObservabilityClusterIp(cluster);
+    const controlClusterIp = await this.resolveControlClusterIp(cluster);
 
     // Create node record FIRST so we have the node.id for SERVER_ID in cloud-init
     const serverName = `${cluster.name}-master`;
@@ -191,13 +191,11 @@ export class ClusterOrchestrationService {
       provider: cluster.provider,
       caPublicKey,
       caPrivateKey,
-      deployObservabilityStack:
-        cluster.clusterType === ClusterType.OBSERVABILITY,
+      deployObservabilityStack: isControlClusterType(cluster.clusterType),
       // Multi-cluster observability
-      observabilityClusterIp,
+      controlClusterIp,
       deployMonitoringAgent:
-        cluster.clusterType === ClusterType.WORKLOAD &&
-        !!observabilityClusterIp,
+        cluster.clusterType === ClusterType.WORKLOAD && !!controlClusterIp,
       sharedStorage: sharedStorageEnabled
         ? {
             enabled: true,
@@ -276,12 +274,10 @@ export class ClusterOrchestrationService {
           provider: cluster.provider,
           caPublicKey,
           caPrivateKey,
-          deployObservabilityStack:
-            cluster.clusterType === ClusterType.OBSERVABILITY,
-          observabilityClusterIp,
+          deployObservabilityStack: isControlClusterType(cluster.clusterType),
+          controlClusterIp,
           deployMonitoringAgent:
-            cluster.clusterType === ClusterType.WORKLOAD &&
-            !!observabilityClusterIp,
+            cluster.clusterType === ClusterType.WORKLOAD && !!controlClusterIp,
           bootstrapPublicKey: bootstrapPublicKeyForCloudInit,
           sharedStorage: sharedStorageEnabled
             ? {
@@ -649,8 +645,7 @@ export class ClusterOrchestrationService {
       `Created node record with ID ${node.id} for worker ${serverName}`,
     );
 
-    const observabilityClusterIp =
-      await this.resolveWorkerObservabilityIp(cluster);
+    const controlClusterIp = await this.resolveWorkerObservabilityIp(cluster);
 
     // Resolve Flui shared storage config for the worker (NFS+fscache, §14).
     // Workers mount the master's NFS export and run cachefilesd. We need
@@ -676,7 +671,7 @@ export class ClusterOrchestrationService {
       provider: cluster.provider,
       caPublicKey,
       // Multi-cluster observability
-      observabilityClusterIp,
+      controlClusterIp,
       sharedStorage: workerSharedStorage,
     });
 
@@ -771,7 +766,7 @@ export class ClusterOrchestrationService {
           instanceName: serverName,
           provider: cluster.provider,
           caPublicKey,
-          observabilityClusterIp,
+          controlClusterIp,
           bootstrapPublicKey: workerBootstrapPublicKeyForCloudInit,
           sharedStorage: workerSharedStorage,
         })
@@ -1272,8 +1267,8 @@ export class ClusterOrchestrationService {
   }
 
   /**
-   * Get observability cluster if it exists and is ready
-   * Returns null if no observability cluster exists or if it's not ready
+   * Get control cluster if it exists and is ready
+   * Returns null if no control cluster exists or if it's not ready
    */
   private debugLogBootstrapKey(
     label: string,
@@ -1326,7 +1321,7 @@ export class ClusterOrchestrationService {
   ): Promise<string | undefined> {
     if (cluster.clusterType === ClusterType.WORKLOAD) {
       try {
-        const obsCluster = await this.getObservabilityCluster();
+        const obsCluster = await this.getControlCluster();
         if (
           obsCluster &&
           (obsCluster.masterPrivateIp || obsCluster.masterIpAddress)
@@ -1335,39 +1330,37 @@ export class ClusterOrchestrationService {
         }
       } catch (error) {
         this.logger.error(
-          `Error retrieving observability cluster for worker node: ${error.message}`,
+          `Error retrieving control cluster for worker node: ${error.message}`,
         );
       }
       return undefined;
     }
-    if (cluster.clusterType === ClusterType.OBSERVABILITY) {
+    if (isControlClusterType(cluster.clusterType)) {
       return cluster.masterPrivateIp ?? cluster.masterIpAddress ?? undefined;
     }
     return undefined;
   }
 
-  private async resolveObservabilityClusterIp(
+  private async resolveControlClusterIp(
     cluster: ClusterEntity,
   ): Promise<string | undefined> {
     if (cluster.clusterType !== ClusterType.WORKLOAD) {
       this.logger.log(
-        `📊 This is an OBSERVABILITY cluster - will NOT connect to remote observability cluster`,
+        `📊 This is an control cluster - will NOT connect to remote control cluster`,
       );
       return undefined;
     }
     this.logger.log(
-      `📊 This is a WORKLOAD cluster - checking for observability cluster...`,
+      `📊 This is a WORKLOAD cluster - checking for control cluster...`,
     );
     try {
-      const obsCluster = await this.getObservabilityCluster();
+      const obsCluster = await this.getControlCluster();
       if (
         obsCluster &&
         (obsCluster.masterPrivateIp || obsCluster.masterIpAddress)
       ) {
         const ip = obsCluster.masterPrivateIp ?? obsCluster.masterIpAddress;
-        this.logger.log(
-          `✅ Using observability cluster at ${ip} for monitoring`,
-        );
+        this.logger.log(`✅ Using control cluster at ${ip} for monitoring`);
         this.logger.debug(
           `   Will pass OBSERVABILITY_CLUSTER_IP=${ip} to bootstrap script`,
         );
@@ -1375,11 +1368,11 @@ export class ClusterOrchestrationService {
       }
       if (obsCluster) {
         this.logger.warn(
-          `⚠️ Observability cluster exists but is not ready (status: ${obsCluster.status})`,
+          `⚠️ Control cluster exists but is not ready (status: ${obsCluster.status})`,
         );
       } else {
         this.logger.warn(
-          '⚠️ No observability cluster found - cluster will have limited monitoring capabilities',
+          '⚠️ No control cluster found - cluster will have limited monitoring capabilities',
         );
       }
       this.logger.warn(
@@ -1387,7 +1380,7 @@ export class ClusterOrchestrationService {
       );
     } catch (error) {
       this.logger.error(
-        `❌ Error retrieving observability cluster: ${error.message}. Proceeding without remote monitoring.`,
+        `❌ Error retrieving control cluster: ${error.message}. Proceeding without remote monitoring.`,
         error.stack,
       );
       this.logger.warn(
@@ -1397,15 +1390,13 @@ export class ClusterOrchestrationService {
     return undefined;
   }
 
-  private async getObservabilityCluster(): Promise<ClusterEntity | null> {
+  private async getControlCluster(): Promise<ClusterEntity | null> {
     try {
-      this.logger.debug(
-        '🔍 Searching for observability cluster in database...',
-      );
+      this.logger.debug('🔍 Searching for control cluster in database...');
 
       const obsCluster = await this.clusterRepository.findOne({
         where: {
-          clusterType: ClusterType.OBSERVABILITY,
+          clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
         },
         order: {
           createdAt: 'DESC', // Get most recent if multiple exist
@@ -1414,13 +1405,13 @@ export class ClusterOrchestrationService {
 
       if (!obsCluster) {
         this.logger.warn(
-          '❌ No observability cluster found in database (clusterType = OBSERVABILITY)',
+          '❌ No control cluster found in database (clusterType = OBSERVABILITY)',
         );
         return null;
       }
 
       this.logger.debug(
-        `✅ Found observability cluster: ${obsCluster.name} (id: ${obsCluster.id})`,
+        `✅ Found control cluster: ${obsCluster.name} (id: ${obsCluster.id})`,
       );
       this.logger.debug(
         `   - Status: ${obsCluster.status} (required: ${ClusterStatus.READY})`,
@@ -1436,27 +1427,27 @@ export class ClusterOrchestrationService {
         obsCluster.masterIpAddress
       ) {
         this.logger.log(
-          `✅ Observability cluster is READY with master IP: ${obsCluster.masterIpAddress}`,
+          `✅ Control cluster is READY with master IP: ${obsCluster.masterIpAddress}`,
         );
         return obsCluster;
       }
 
       if (obsCluster.status !== ClusterStatus.READY) {
         this.logger.warn(
-          `⚠️ Observability cluster exists but status is ${obsCluster.status} (not READY)`,
+          `⚠️ Control cluster exists but status is ${obsCluster.status} (not READY)`,
         );
       }
 
       if (!obsCluster.masterIpAddress) {
         this.logger.warn(
-          `⚠️ Observability cluster exists but masterIpAddress is not set`,
+          `⚠️ Control cluster exists but masterIpAddress is not set`,
         );
       }
 
       return null;
     } catch (error) {
       this.logger.error(
-        `Error retrieving observability cluster: ${error.message}`,
+        `Error retrieving control cluster: ${error.message}`,
         error.stack,
       );
       return null;

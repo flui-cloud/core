@@ -7,7 +7,7 @@ import {
 import { InjectQueue } from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bull';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   InfrastructureOperationEntity,
   OperationType,
@@ -193,11 +193,13 @@ export class AuthzInstallService {
 
   private async assertOidcMode(): Promise<void> {
     const obsCluster = await this.clusterRepo.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!obsCluster?.kubeconfigEncrypted) {
       throw new BadRequestException(
-        'Observability cluster not found — cannot verify auth mode',
+        'Control cluster not found — cannot verify auth mode',
       );
     }
     const kubeconfig = this.encryptionService.decrypt(

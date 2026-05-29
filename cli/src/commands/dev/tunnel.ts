@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { ClusterStatus } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
 
@@ -47,7 +47,7 @@ const FORWARDS: Record<string, ForwardSpec> = {
     localPort: 3001,
     remotePort: 3000,
     service: 'svc/grafana',
-    namespace: 'flui-observability',
+    namespace: 'flui-control',
     needsKubectl: true,
   },
   vmsingle: {
@@ -55,7 +55,7 @@ const FORWARDS: Record<string, ForwardSpec> = {
     localPort: 9090,
     remotePort: 8428,
     service: 'svc/vmsingle',
-    namespace: 'flui-observability',
+    namespace: 'flui-control',
     needsKubectl: true,
   },
   loki: {
@@ -63,14 +63,14 @@ const FORWARDS: Record<string, ForwardSpec> = {
     localPort: 3100,
     remotePort: 3100,
     service: 'svc/loki',
-    namespace: 'flui-observability',
+    namespace: 'flui-control',
     needsKubectl: true,
   },
 };
 
 export default class DevTunnel extends Command {
   static readonly description =
-    'Open SSH tunnels from localhost to the observability cluster services.\n' +
+    'Open SSH tunnels from localhost to the control cluster services.\n' +
     'On the remote side runs kubectl port-forward against the in-cluster Services,\n' +
     'so no NodePort or kube-API exposure is required. Stay in foreground; CTRL-C to close.';
 
@@ -109,11 +109,11 @@ export default class DevTunnel extends Command {
     let masterIp: string | undefined;
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
-      const cluster = await observabilityService.getObservabilityCluster();
+      const controlService = app.get(CliControlClusterService);
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
+        spinner.fail('No control cluster found');
         console.log(chalk.yellow('\n⚠️  Run `flui env create` first.\n'));
         return;
       }

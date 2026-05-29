@@ -2,14 +2,14 @@ import { Command } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { HetznerProviderService } from 'src/modules/providers/services/hetzner-provider.service';
 import { ClusterStatus } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
 import { CliClusterRepository } from '../../lib/repositories/cli-cluster.repository';
 import { printContextBanner } from '../../lib/context-banner';
 
 export default class EnvRestart extends Command {
-  static readonly description = 'Restart stopped observability cluster servers';
+  static readonly description = 'Restart stopped control cluster servers';
 
   static readonly examples = ['<%= config.bin %> <%= command.id %>'];
 
@@ -22,17 +22,17 @@ export default class EnvRestart extends Command {
       const app = await getNestApp();
       spinner.succeed('Initialized');
 
-      console.log(chalk.cyan('\n🔄 Restarting Observability Cluster\n'));
+      console.log(chalk.cyan('\n🔄 Restarting Control Cluster\n'));
 
       spinner = ora('Finding cluster...').start();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
 
-      // Get observability cluster
-      const cluster = await observabilityService.getObservabilityCluster();
+      // Get control cluster
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(`Create one with: ${chalk.cyan('flui env create')}\n`);
         return;
       }
@@ -151,7 +151,7 @@ export default class EnvRestart extends Command {
 
           try {
             const servicesHealth =
-              await observabilityService.checkObservabilityServices(
+              await controlService.checkObservabilityServices(
                 cluster.masterIpAddress,
                 cluster.nipHostnameToken,
               );

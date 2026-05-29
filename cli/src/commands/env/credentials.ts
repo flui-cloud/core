@@ -7,14 +7,14 @@ import * as os from 'node:os';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
 import { printContextBanner } from '../../lib/context-banner';
 import { buildNipBaseDomain } from '../../lib/nip-base-domain.util';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { EncryptionService } from 'src/modules/shared/encryption/services/encryption.service';
 import { ClusterStatus } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
 
 export default class EnvCredentials extends Command {
   static readonly description =
-    'Display observability cluster connection information.\n' +
+    'Display control cluster connection information.\n' +
     'Secrets are hidden by default; pass --show-secrets to print them. To populate\n' +
     'a local .env.local for development use `flui dev creds` instead.';
 
@@ -114,12 +114,12 @@ export default class EnvCredentials extends Command {
   }
 
   private async runHealthCheck(
-    observabilityService: CliObservabilityClusterService,
+    controlService: CliControlClusterService,
     masterIp: string,
     nipHostnameToken: string | null | undefined,
   ): Promise<any> {
     const s = ora('Testing connections...').start();
-    const result = await observabilityService.checkObservabilityServices(
+    const result = await controlService.checkObservabilityServices(
       masterIp,
       nipHostnameToken,
     );
@@ -189,15 +189,15 @@ export default class EnvCredentials extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const encryptionService = app.get(EncryptionService);
 
-      // Get observability cluster
-      const cluster = await observabilityService.getObservabilityCluster();
+      // Get control cluster
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;
@@ -216,7 +216,7 @@ export default class EnvCredentials extends Command {
       spinner.succeed('Cluster found');
 
       // Get endpoints
-      const endpoints = await observabilityService.getObservabilityEndpoints(
+      const endpoints = await controlService.getObservabilityEndpoints(
         cluster.id,
       );
       const masterIp = cluster.masterIpAddress;
@@ -290,7 +290,7 @@ export default class EnvCredentials extends Command {
 
       const healthStatus = flags.test
         ? await this.runHealthCheck(
-            observabilityService,
+            controlService,
             masterIp,
             cluster.nipHostnameToken,
           )
@@ -413,7 +413,7 @@ export default class EnvCredentials extends Command {
       dbUserPassword: string;
     } | null = null,
   ): void {
-    console.log(chalk.cyan('\n📋 Observability Cluster Credentials'));
+    console.log(chalk.cyan('\n📋 Control Cluster Credentials'));
     console.log(chalk.cyan('━'.repeat(50)));
 
     // Endpoints section

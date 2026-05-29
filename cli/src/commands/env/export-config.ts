@@ -4,7 +4,7 @@ import ora from 'ora';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliEndpointResolverService } from '../../services/cli-endpoint-resolver.service';
 import { ConfigStorage } from '../../lib/config-storage';
 import { ClusterStatus } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
@@ -72,14 +72,14 @@ export default class EnvExportConfig extends Command {
 
     try {
       const app = await getNestApp();
-      const observabilityService = app.get(CliObservabilityClusterService);
+      const controlService = app.get(CliControlClusterService);
       const resolver = app.get(CliEndpointResolverService);
 
-      const cluster = await observabilityService.getObservabilityCluster();
+      const cluster = await controlService.getControlCluster();
 
       if (!cluster) {
-        spinner.fail('No observability cluster found');
-        console.log(chalk.yellow('\n⚠️  No observability cluster exists.\n'));
+        spinner.fail('No control cluster found');
+        console.log(chalk.yellow('\n⚠️  No control cluster exists.\n'));
         console.log(chalk.dim('Create one with:'));
         console.log(`   ${chalk.cyan('flui env create')}\n`);
         return;

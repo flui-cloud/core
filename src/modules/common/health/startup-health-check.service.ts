@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Raw, Repository } from 'typeorm';
+import { In, Raw, Repository } from 'typeorm';
 import Redis from 'ioredis';
 import { execSync } from 'node:child_process';
 import {
@@ -54,9 +54,9 @@ export class StartupHealthCheckService {
     const redisCheck = await this.checkRedisConnection();
     checks.push(redisCheck);
 
-    // Check observability cluster (only in cluster mode)
+    // Check control cluster (only in cluster mode)
     if (deploymentMode === DeploymentMode.CLUSTER) {
-      const clusterCheck = await this.checkObservabilityCluster();
+      const clusterCheck = await this.checkControlCluster();
       checks.push(clusterCheck);
     }
 
@@ -192,11 +192,11 @@ export class StartupHealthCheckService {
     }
   }
 
-  private async checkObservabilityCluster(): Promise<HealthCheckResult> {
+  private async checkControlCluster(): Promise<HealthCheckResult> {
     try {
       const cluster = await this.clusterRepository.findOne({
         where: [
-          { clusterType: ClusterType.OBSERVABILITY },
+          { clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]) },
           {
             metadata: Raw((alias) => `${alias} ->> 'purpose' = :purpose`, {
               purpose: 'observability',
@@ -207,14 +207,14 @@ export class StartupHealthCheckService {
       });
 
       if (!cluster) {
-        // Not yet registered — this is normal on first startup of the observability cluster itself.
+        // Not yet registered — this is normal on first startup of the control cluster itself.
         // The cluster record is created by the CLI after the API is already running.
         this.logger.warn(
-          '⚠️  No observability cluster found in DB — first startup or not yet registered via CLI',
+          '⚠️  No control cluster found in DB — first startup or not yet registered via CLI',
         );
         return {
           success: true,
-          service: 'Observability Cluster',
+          service: 'Control Cluster',
           details: {
             message: 'Not yet registered (first startup)',
           },
@@ -224,11 +224,11 @@ export class StartupHealthCheckService {
       if (cluster.status === ClusterStatus.DELETED) {
         return {
           success: false,
-          service: 'Observability Cluster',
+          service: 'Control Cluster',
           error: 'DELETED',
           details: {
             clusterId: cluster.id,
-            message: 'Observability cluster has been deleted',
+            message: 'Control cluster has been deleted',
           },
         };
       }
@@ -236,7 +236,7 @@ export class StartupHealthCheckService {
       if (cluster.status !== ClusterStatus.READY) {
         return {
           success: false,
-          service: 'Observability Cluster',
+          service: 'Control Cluster',
           error: 'NOT_READY',
           details: {
             clusterId: cluster.id,
@@ -248,7 +248,7 @@ export class StartupHealthCheckService {
 
       return {
         success: true,
-        service: 'Observability Cluster',
+        service: 'Control Cluster',
         details: {
           clusterId: cluster.id,
           status: cluster.status,
@@ -259,7 +259,7 @@ export class StartupHealthCheckService {
     } catch (error) {
       return {
         success: false,
-        service: 'Observability Cluster',
+        service: 'Control Cluster',
         error: error.message,
       };
     }
@@ -301,17 +301,17 @@ export class StartupHealthCheckService {
         );
       }
 
-      if (check.service === 'Observability Cluster') {
+      if (check.service === 'Control Cluster') {
         if (check.error === 'NOT_FOUND') {
           lines.push(
-            `❌ Observability Cluster Not Found`,
+            `❌ Control Cluster Not Found`,
             '',
             `   Deployment Mode: ${deploymentMode}`,
             '',
           );
         } else if (check.error === 'NOT_READY') {
           lines.push(
-            `❌ Observability Cluster Not Ready`,
+            `❌ Control Cluster Not Ready`,
             '',
             `   Cluster ID: ${check.details?.clusterId}`,
             `   Current Status: ${check.details?.currentStatus}`,
@@ -320,14 +320,14 @@ export class StartupHealthCheckService {
           );
         } else if (check.error === 'DELETED') {
           lines.push(
-            `❌ Observability Cluster Deleted`,
+            `❌ Control Cluster Deleted`,
             '',
             `   Cluster ID: ${check.details?.clusterId}`,
             '',
           );
         } else {
           lines.push(
-            `❌ Observability Cluster Error`,
+            `❌ Control Cluster Error`,
             '',
             `   Error: ${check.error}`,
             '',

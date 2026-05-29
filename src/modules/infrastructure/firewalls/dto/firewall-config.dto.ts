@@ -39,7 +39,7 @@ export class FirewallConfigDto {
   @ApiPropertyOptional({
     description:
       'Custom firewall rules. If not provided, default rules based on cluster type will be used. ' +
-      'Observability clusters: SSH, Grafana, Prometheus, PostgreSQL, Redis, Loki, Health endpoint. ' +
+      'Control clusters: SSH, Grafana, Prometheus, PostgreSQL, Redis, Loki, Health endpoint. ' +
       'Workload clusters: SSH, K3s API (6443). ' +
       'Custom rules must include at least SSH (port 22) and outbound traffic.',
     type: [FirewallRuleDto],

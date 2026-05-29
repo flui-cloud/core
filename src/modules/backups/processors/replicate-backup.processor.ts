@@ -2,7 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   ClusterEntity,
   ClusterType,
@@ -69,14 +69,14 @@ export class ReplicateBackupProcessor {
     try {
       const obsCluster = await this.clusterRepo.findOne({
         where: {
-          clusterType: ClusterType.OBSERVABILITY,
+          clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
           status: ClusterStatus.READY,
         },
         order: { createdAt: 'DESC' },
       });
       if (!obsCluster) {
         throw new Error(
-          'No READY observability cluster found — cannot run replication',
+          'No READY control cluster found — cannot run replication',
         );
       }
       const obsKubeconfig = this.encryption.decrypt(

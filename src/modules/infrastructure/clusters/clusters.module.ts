@@ -12,7 +12,7 @@ import { ManagementModule } from 'src/modules/management/management.module';
 import { FirewallsModule } from '../firewalls/firewalls.module';
 import { VNetsModule } from '../vnets/vnets.module';
 import { GrafanaModule } from 'src/modules/grafana/grafana.module';
-import { ObservabilityClusterModule } from '../observability-cluster/observability-cluster.module';
+import { ControlClusterModule } from '../control-cluster/control-cluster.module';
 import { ImagesModule } from 'src/modules/images/images.module';
 import { TerminalModule } from 'src/modules/terminal/terminal.module';
 import { ObservabilityModule } from 'src/modules/observability/observability.module';
@@ -72,7 +72,7 @@ import { ClusterQueueProcessor } from './processors/cluster-queue.processor';
     VNetsModule,
     GrafanaModule, // For GrafanaDatasourceService
     ImagesModule, // For ResourceProfilesService
-    forwardRef(() => ObservabilityClusterModule),
+    forwardRef(() => ControlClusterModule),
     TerminalModule, // For NativeSSHConnectionService (kubeconfig fetch)
     EncryptionModule,
     InfrastructureOperationsModule,
@@ -128,7 +128,7 @@ import { ClusterQueueProcessor } from './processors/cluster-queue.processor';
   ],
   exports: [
     ClustersService,
-    ClusterMapperService, // Export for use in ObservabilityClusterModule
+    ClusterMapperService, // Export for use in ControlClusterModule
     ClusterBillingService, // Export for use in BackupsModule (BillingEstimatorService)
     BillingIntervalsService,
   ],

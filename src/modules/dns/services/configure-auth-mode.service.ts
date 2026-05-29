@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   ClusterEntity,
   ClusterType,
@@ -36,13 +36,15 @@ export class ConfigureAuthModeService {
   async configureAuthMode(
     dto: ConfigureAuthModeDto,
   ): Promise<ConfigureAuthModeResultDto> {
-    // Auth config is platform-wide — always targets the observability cluster
+    // Auth config is platform-wide — always targets the control cluster
     const cluster = await this.clusterRepository.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!cluster) {
       throw new NotFoundException(
-        'Observability cluster not found. Ensure the cluster is registered in the database.',
+        'Control cluster not found. Ensure the cluster is registered in the database.',
       );
     }
 
@@ -287,7 +289,7 @@ export class ConfigureAuthModeService {
     });
     if (!app) {
       this.logger.warn(
-        `Application "${slug}" not found in observability cluster — restart skipped`,
+        `Application "${slug}" not found in control cluster — restart skipped`,
       );
     }
     return app;
@@ -311,7 +313,7 @@ export class ConfigureAuthModeService {
   private async getKubeconfig(cluster: ClusterEntity): Promise<string> {
     if (!cluster.kubeconfigEncrypted) {
       throw new BadRequestException(
-        `Observability cluster ${cluster.id} has no kubeconfig stored`,
+        `Control cluster ${cluster.id} has no kubeconfig stored`,
       );
     }
     const kubeconfig = this.encryptionService.decrypt(

@@ -5,7 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { getNestApp, closeNestApp } from '../../lib/nest-app';
-import { CliObservabilityClusterService } from '../../services/cli-observability-cluster.service';
+import { CliControlClusterService } from '../../services/cli-control-cluster.service';
 import { CliSshService } from '../../services/cli-ssh.service';
 import { printContextBanner } from '../../lib/context-banner';
 
@@ -71,13 +71,11 @@ export default class EnvRepairSshCa extends Command {
 
     const app = await getNestApp();
     try {
-      const obs = app.get(CliObservabilityClusterService);
+      const obs = app.get(CliControlClusterService);
       const ssh = app.get(CliSshService);
-      const cluster = await obs.getObservabilityCluster();
+      const cluster = await obs.getControlCluster();
       if (!cluster?.masterIpAddress) {
-        this.log(
-          chalk.red('  No observability cluster found in this profile.'),
-        );
+        this.log(chalk.red('  No control cluster found in this profile.'));
         this.exit(1);
         return;
       }

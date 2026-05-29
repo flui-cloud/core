@@ -27,7 +27,7 @@ export class GrafanaDatasourceService {
    * Called automatically when a workload cluster becomes READY
    *
    * NOTE: Loki datasource is NOT created per-cluster.
-   * A centralized Loki datasource is created once for the observability cluster.
+   * A centralized Loki datasource is created once for the control cluster.
    * All workload clusters send logs to the same Loki instance, filtered by labels.
    */
   async addClusterDatasources(cluster: ClusterEntity): Promise<void> {
@@ -99,7 +99,7 @@ export class GrafanaDatasourceService {
     cluster: ClusterEntity,
   ): Promise<string> {
     // Get Prometheus endpoint from environment configuration
-    // This points to the observability cluster Prometheus instance
+    // This points to the control cluster Prometheus instance
     const prometheusEndpoint = this.configService.get<string>(
       'PROMETHEUS_ENDPOINT',
     );

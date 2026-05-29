@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   ClusterEntity,
   ClusterType,
@@ -67,7 +67,7 @@ export interface OidcBootstrapResult {
 }
 
 /**
- * Performs the one-time OIDC provider setup for an observability cluster:
+ * Performs the one-time OIDC provider setup for an control cluster:
  * creates the Flui project, admin role, OIDC SPA app, grants the role to
  * flui-admin, patches flui-api-config / flui-web-config / flui-secrets and
  * triggers a rolling restart of flui-api and flui-web.
@@ -96,10 +96,12 @@ export class OidcBootstrapService {
    */
   async provisionCliApp(): Promise<{ clientId: string }> {
     const cluster = await this.clusterRepository.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!cluster) {
-      throw new BadRequestException('Observability cluster not registered yet');
+      throw new BadRequestException('Control cluster not registered yet');
     }
     const kubeconfig = await this.getKubeconfig(cluster);
     const issuer = process.env.OIDC_ISSUER ?? process.env.ZITADEL_ISSUER ?? '';
@@ -112,19 +114,21 @@ export class OidcBootstrapService {
   }
 
   /**
-   * Runs the full bootstrap against the observability cluster. Caller is
+   * Runs the full bootstrap against the control cluster. Caller is
    * expected to have already verified that AUTH_MODE=oidc and OIDC_ISSUER is
    * empty — this service does not re-check those conditions.
    */
   async bootstrap(): Promise<OidcBootstrapResult> {
     const cluster = await this.clusterRepository.findOne({
-      where: { clusterType: ClusterType.OBSERVABILITY },
+      where: {
+        clusterType: In([ClusterType.CONTROL, ClusterType.OBSERVABILITY]),
+      },
     });
     if (!cluster) {
-      throw new BadRequestException('Observability cluster not registered yet');
+      throw new BadRequestException('Control cluster not registered yet');
     }
     if (!cluster.masterIpAddress) {
-      throw new BadRequestException('Observability cluster has no master IP');
+      throw new BadRequestException('Control cluster has no master IP');
     }
 
     const kubeconfig = await this.getKubeconfig(cluster);
