@@ -32,6 +32,8 @@ import {
   CreateClusterOperationMetadata,
 } from '../../servers/entities/infrastructure-operations.entity';
 import { ClusterOrchestrationService } from '../services/cluster-orchestration.service';
+import { KubernetesService } from '../../shared/services/kubernetes.service';
+import { EncryptionService } from '../../../shared/encryption/services/encryption.service';
 import { BillingIntervalsService } from '../services/billing-intervals.service';
 import { ServersService } from '../../servers/services/servers.service';
 import { CloudProvider } from 'src/modules/providers/enums/cloud-provider.enum';
@@ -81,6 +83,8 @@ export class ClusterQueueProcessor {
     private readonly clusterDnsZoneService: ClusterDnsZoneService,
     private readonly billingIntervals: BillingIntervalsService,
     private readonly providerFactory: ProviderFactory,
+    private readonly kubernetesService: KubernetesService,
+    private readonly encryptionService: EncryptionService,
   ) {}
 
   private formatVolumeRef(
@@ -2065,52 +2069,29 @@ export class ClusterQueueProcessor {
    * control cluster, so new pods land on workers once the cluster scales out.
    * Best-effort: a failed taint must not fail the scaling operation.
    */
-  private async setMasterTaint(
-    masterIp: string | null | undefined,
-    bootstrapPrivateKey: string | null,
-    apply: boolean,
-  ): Promise<boolean> {
-    if (!bootstrapPrivateKey || !masterIp) {
-      this.logger.warn(
-        '[master-protection] skipped: master IP or bootstrap key unavailable',
-      );
-      return false;
-    }
-    const taint = 'node-role.kubernetes.io/control-plane';
-    const cmd = apply
-      ? `kubectl taint nodes -l ${taint} ${taint}=:NoSchedule --overwrite`
-      : `kubectl taint nodes -l ${taint} ${taint}:NoSchedule- 2>/dev/null || true`;
-    try {
-      await this.nativeSsh.execCommand(
-        masterIp,
-        'root',
-        bootstrapPrivateKey,
-        cmd,
-        30000,
-      );
-      return true;
-    } catch (e) {
-      this.logger.warn(
-        `[master-protection] taint ${apply ? 'apply' : 'remove'} failed: ${(e as Error).message}`,
-      );
-      return false;
-    }
-  }
-
   /**
-   * Drives the master-protection state machine for a control cluster: taints the
-   * master when scaling to multi-node, untaints it when returning to single-node,
-   * persists the state on the cluster, and logs the action loudly.
+   * Taint the master on scale-out / untaint on scale-in for a control cluster,
+   * persist the flag, and log loudly. Applied via the k8s API (not SSH).
    */
   private async applyMasterProtection(
     cluster: ClusterEntity,
     apply: boolean,
   ): Promise<void> {
-    const key = await this.loadBootstrapPrivateKey(
-      cluster.bootstrapKeyId,
-      cluster.masterIpAddress,
+    const encrypted =
+      cluster.kubeconfigEncrypted ??
+      (await this.clusterRepository.findOne({ where: { id: cluster.id } }))
+        ?.kubeconfigEncrypted;
+    if (!encrypted) {
+      this.logger.warn(
+        '[master-protection] skipped: cluster kubeconfig unavailable',
+      );
+      return;
+    }
+    const kubeconfig = this.encryptionService.decrypt(encrypted);
+    const ok = await this.kubernetesService.setControlPlaneTaint(
+      kubeconfig,
+      apply,
     );
-    const ok = await this.setMasterTaint(cluster.masterIpAddress, key, apply);
     if (!ok) return;
 
     // Re-fetch without relations so save() doesn't cascade the (possibly stale) nodes.

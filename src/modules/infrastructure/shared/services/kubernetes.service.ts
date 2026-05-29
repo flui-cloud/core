@@ -1381,6 +1381,53 @@ export class KubernetesService {
   }
 
   /**
+   * Add/remove the control-plane NoSchedule taint on master node(s) via the
+   * k8s API. Returns false when no control-plane node is found.
+   */
+  async setControlPlaneTaint(
+    kubeconfigContent: string,
+    apply: boolean,
+  ): Promise<boolean> {
+    const key = 'node-role.kubernetes.io/control-plane';
+    const { coreApi } = this.getKubeClient(kubeconfigContent);
+    const nodes = await coreApi.listNode();
+    const masters = (nodes.items ?? []).filter((n) => {
+      const labels = n.metadata?.labels ?? {};
+      return (
+        'node-role.kubernetes.io/control-plane' in labels ||
+        'node-role.kubernetes.io/master' in labels
+      );
+    });
+    if (masters.length === 0) return false;
+
+    const kc = this.loadKubeconfig(kubeconfigContent);
+    const client = k8s.KubernetesObjectApi.makeApiClient(kc);
+    for (const node of masters) {
+      const name = node.metadata?.name;
+      if (!name) continue;
+      const without = (node.spec?.taints ?? []).filter((t) => t.key !== key);
+      const taints = apply
+        ? [...without, { key, effect: 'NoSchedule' }]
+        : without;
+      const patch = {
+        apiVersion: 'v1',
+        kind: 'Node',
+        metadata: { name },
+        spec: { taints },
+      } as k8s.KubernetesObject;
+      await client.patch(
+        patch,
+        undefined,
+        undefined,
+        'flui-api',
+        undefined,
+        k8s.PatchStrategy.MergePatch,
+      );
+    }
+    return true;
+  }
+
+  /**
    * Sum resource requests (CPU in millicores, memory in Mi) across all
    * containers in Running pods across all namespaces.
    */
