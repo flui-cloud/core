@@ -566,19 +566,16 @@ export class CliClustersService {
           this.logger.log(
             `No firewalls found by label. Searching by name pattern...`,
           );
-          // Search for the control-cluster firewall by name pattern:
-          // - Current: flui-control-{clusterId} / flui-control-firewall
-          // - Legacy: flui-observability-{clusterId} / flui-observability-firewall-{timestamp}
+          // Exact cluster-scoped names only — never global prefixes (would hit
+          // another cluster's firewall).
           const allProviderFirewalls = await this.firewallService.listFirewalls(
             {},
           );
           const nameMatchedFirewalls = allProviderFirewalls.filter(
             (fw) =>
+              fw.name === `flui-control-firewall-${cluster.id}` ||
               fw.name === `flui-control-${cluster.id}` ||
-              fw.name === 'flui-control-firewall' ||
-              fw.name === `flui-observability-${cluster.id}` ||
-              fw.name.startsWith('flui-observability-firewall-') ||
-              fw.name.startsWith('flui-firewall-temp-'), // Legacy pattern
+              fw.name === `flui-observability-${cluster.id}`,
           );
 
           if (nameMatchedFirewalls.length > 0) {

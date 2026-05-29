@@ -442,7 +442,10 @@ export class CliClusterCreatorService {
             await this.firewallRepository.findById(firewallId);
 
           if (firewallRecord) {
+            // Cluster-scoped name so destroy matches by exact name only.
+            const scopedFirewallName = `flui-control-firewall-${cluster.id}`;
             firewallRecord.clusterId = cluster.id;
+            firewallRecord.name = scopedFirewallName;
             // Get server IDs from cluster nodes
             const serverIds = cluster.nodes.map(
               (node) => node.providerResourceId,
@@ -450,7 +453,7 @@ export class CliClusterCreatorService {
             firewallRecord.appliedToServerIds = serverIds;
             await this.firewallRepository.save(firewallRecord);
 
-            // Update Hetzner firewall labels with cluster ID
+            // Update Hetzner firewall labels + name with cluster ID
             try {
               const existingLabels = Object.fromEntries(
                 firewallRecord.labels.map((l) => [l.key, l.value]),
@@ -463,6 +466,7 @@ export class CliClusterCreatorService {
               await this.firewallService.updateFirewallLabels(
                 firewallId,
                 updatedLabels,
+                scopedFirewallName,
               );
               this.log(
                 opId,

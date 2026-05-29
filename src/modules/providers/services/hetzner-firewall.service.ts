@@ -560,6 +560,7 @@ export class HetznerFirewallService implements IFirewallProvider {
   async updateFirewallLabels(
     firewallId: string,
     labels: Record<string, string>,
+    name?: string,
   ): Promise<void> {
     this.logger.log(`Updating firewall ${firewallId} labels`);
 
@@ -568,6 +569,7 @@ export class HetznerFirewallService implements IFirewallProvider {
 
       await firewallsApi.updateFirewall(Number.parseInt(firewallId), {
         labels,
+        ...(name ? { name } : {}),
       });
 
       this.logger.log(
