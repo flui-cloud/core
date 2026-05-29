@@ -54,21 +54,36 @@ export class DedicatedPlacementService {
     });
   }
 
+  /** Worker with the most headroom, or null when the cluster has no worker. */
+  async selectBestWorker(app: ApplicationEntity): Promise<string | null> {
+    const kubeconfig = await this.resolveKubeconfig(app);
+    if (!kubeconfig) return null;
+
+    const workers =
+      await this.kubernetesService.listWorkerNodeCapacities(kubeconfig);
+    if (workers.length === 0) return null;
+
+    const required = this.requiredResources(app);
+    const score = (w: (typeof workers)[number]): number =>
+      Math.min(
+        w.free.cpu / Math.max(1, required.cpu),
+        w.free.memory / Math.max(1, required.memory),
+      );
+
+    const fitting = workers.filter(
+      (w) => required.cpu <= w.free.cpu && required.memory <= w.free.memory,
+    );
+    // none fit → still return the roomiest so the precheck reports a real node
+    const pool = fitting.length > 0 ? fitting : workers;
+    pool.sort((a, b) => score(b) - score(a));
+    return pool[0].nodeName;
+  }
+
   async evaluate(
     app: ApplicationEntity,
   ): Promise<DedicatedPlacementReport | null> {
-    const cluster = await this.clusterRepository.findOne({
-      where: { id: app.clusterId },
-    });
-    if (!cluster?.kubeconfigEncrypted) {
-      this.logger.warn(
-        `Cluster ${app.clusterId} missing kubeconfig — skipping placement precheck`,
-      );
-      return null;
-    }
-    const kubeconfig = this.encryptionService.decrypt(
-      cluster.kubeconfigEncrypted,
-    );
+    const kubeconfig = await this.resolveKubeconfig(app);
+    if (!kubeconfig) return null;
 
     let capacity: Awaited<
       ReturnType<KubernetesService['getMasterNodeCapacity']>
@@ -80,9 +95,17 @@ export class DedicatedPlacementService {
         app.dedicatedNodeName,
       );
       target = 'worker';
-    } else {
+    } else if (app.allowMasterPlacement) {
       capacity = await this.kubernetesService.getMasterNodeCapacity(kubeconfig);
       target = 'master';
+    } else {
+      const worker = await this.selectBestWorker(app);
+      if (!worker) return null;
+      capacity = await this.kubernetesService.getNodeCapacityByName(
+        kubeconfig,
+        worker,
+      );
+      target = 'worker';
     }
     if (!capacity) {
       this.logger.warn(
@@ -106,6 +129,21 @@ export class DedicatedPlacementService {
       required,
       fits,
     };
+  }
+
+  private async resolveKubeconfig(
+    app: ApplicationEntity,
+  ): Promise<string | null> {
+    const cluster = await this.clusterRepository.findOne({
+      where: { id: app.clusterId },
+    });
+    if (!cluster?.kubeconfigEncrypted) {
+      this.logger.warn(
+        `Cluster ${app.clusterId} missing kubeconfig — skipping placement precheck`,
+      );
+      return null;
+    }
+    return this.encryptionService.decrypt(cluster.kubeconfigEncrypted);
   }
 
   private requiredResources(app: ApplicationEntity): {

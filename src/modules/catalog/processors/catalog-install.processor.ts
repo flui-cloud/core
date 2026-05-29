@@ -569,6 +569,7 @@ export class CatalogInstallProcessor {
       volumes: this.mapVolumes(spec.volumes),
       workloadKind: isBuildingBlock ? 'StatefulSet' : 'Deployment',
       persistenceScope: spec.persistence?.scope ?? 'shared',
+      allowMasterPlacement: spec.persistence?.allowMaster ?? false,
       startCommand: spec.startCommand,
       labels: {
         'flui.cloud/catalog-app': definition.slug,
@@ -1196,6 +1197,7 @@ export class CatalogInstallProcessor {
         ? 'StatefulSet'
         : 'Deployment',
       persistenceScope: component.persistence?.scope ?? 'shared',
+      allowMasterPlacement: component.persistence?.allowMaster ?? false,
       labels: {
         'flui.cloud/catalog-app': definition.slug,
         'flui.cloud/catalog-install': install.id,

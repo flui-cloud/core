@@ -98,10 +98,10 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'grafana',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
       },
-      { kind: 'Service', name: 'grafana', namespace: 'flui-observability' },
+      { kind: 'Service', name: 'grafana', namespace: 'flui-control' },
     ],
   },
   {
@@ -115,10 +115,10 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'vmsingle',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
       },
-      { kind: 'Service', name: 'vmsingle', namespace: 'flui-observability' },
+      { kind: 'Service', name: 'vmsingle', namespace: 'flui-control' },
     ],
   },
   {
@@ -132,7 +132,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'vmagent',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
       },
     ],
@@ -148,7 +148,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'vmalert',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
         optional: true,
       },
@@ -165,10 +165,10 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'loki',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
       },
-      { kind: 'Service', name: 'loki', namespace: 'flui-observability' },
+      { kind: 'Service', name: 'loki', namespace: 'flui-control' },
     ],
   },
   {
@@ -216,7 +216,7 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
       {
         kind: 'Deployment',
         name: 'kube-state-metrics',
-        namespace: 'flui-observability',
+        namespace: 'flui-control',
         workload: true,
       },
     ],
@@ -334,6 +334,22 @@ export const PLATFORM_COMPONENTS_CATALOG: PlatformComponentDefinition[] = [
         kind: 'Deployment',
         name: 'local-path-provisioner',
         namespace: 'kube-system',
+        workload: true,
+      },
+    ],
+  },
+  {
+    key: 'flui-local-path-provisioner',
+    name: 'flui-local storage',
+    description: 'Node-local storage provisioner for dedicated workloads',
+    category: 'storage',
+    managedBy: 'flui',
+    clusterTypes: [ClusterType.CONTROL],
+    resources: [
+      {
+        kind: 'Deployment',
+        name: 'flui-local-path-provisioner',
+        namespace: 'flui-local-storage',
         workload: true,
       },
     ],

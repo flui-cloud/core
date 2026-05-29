@@ -372,9 +372,15 @@ export class ApplicationResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'When persistenceScope=dedicated, the Kubernetes node name the pod is pinned to. Null means the master node (the default).',
+      'When persistenceScope=dedicated, the Kubernetes node name the pod is pinned to. Null until the deploy auto-assigns the worker with the most free capacity.',
   })
   dedicatedNodeName?: string | null;
+
+  @ApiProperty({
+    description:
+      'When persistenceScope=dedicated, whether the app may schedule on the master (control-plane) node instead of a worker. Defaults to false.',
+  })
+  allowMasterPlacement: boolean;
 
   @ApiProperty()
   labels: Record<string, string>;

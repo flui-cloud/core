@@ -1,5 +1,11 @@
 import { Processor, Process, InjectQueue } from '@nestjs/bull';
-import { Inject, Logger, forwardRef, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Logger,
+  forwardRef,
+  Optional,
+  BadRequestException,
+} from '@nestjs/common';
 import { Job, Queue } from 'bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
@@ -47,6 +53,7 @@ import { ApplicationSourceDeployService } from '../services/application-source-d
 import { findSystemAppByLabel } from '../constants/system-app-catalog';
 import { ApplicationResourceKind } from '../enums/application-resource-kind.enum';
 import { AppResourceEntity } from '../entities/app-resource.entity';
+import { DedicatedPlacementService } from '../services/dedicated-placement.service';
 
 @Processor('application-deploy')
 export class ApplicationDeployProcessor {
@@ -69,6 +76,7 @@ export class ApplicationDeployProcessor {
     private readonly eventsGateway: ApplicationEventsGateway,
     private readonly ghcrSecretRefresh: GhcrSecretRefreshService,
     private readonly deployConfig: DeployConfigService,
+    private readonly dedicatedPlacement: DedicatedPlacementService,
     @Optional()
     @Inject(forwardRef(() => DeploymentGuardService))
     private readonly deploymentGuard?: DeploymentGuardService,
@@ -85,6 +93,37 @@ export class ApplicationDeployProcessor {
     @InjectQueue('backup')
     private readonly backupQueue?: Queue,
   ) {}
+
+  /**
+   * Auto-pin a dedicated app to the worker with the most free capacity, unless
+   * it is already pinned or opted into the master. Fails loudly if no worker
+   * exists. Single chokepoint for both catalog and app deploys.
+   */
+  private async ensureDedicatedPlacement(
+    app: ApplicationEntity,
+  ): Promise<ApplicationEntity> {
+    if (app.persistenceScope !== 'dedicated') return app;
+    if (app.dedicatedNodeName || app.allowMasterPlacement) return app;
+
+    const worker = await this.dedicatedPlacement.selectBestWorker(app);
+    if (!worker) {
+      throw new BadRequestException({
+        code: 'NO_WORKER_FOR_DEDICATED_APP',
+        message:
+          `App "${app.slug}" uses dedicated (node-local) storage, which must run on a ` +
+          `worker node, but this cluster has none. Add one with \`flui node add\`, or ` +
+          `redeploy with --allow-master to place it on the control-plane node.`,
+      });
+    }
+
+    this.logger.warn(
+      `Dedicated app ${app.slug} auto-pinned to worker ${worker} (most free capacity)`,
+    );
+    const updated = await this.applicationsRepository.update(app.id, {
+      dedicatedNodeName: worker,
+    });
+    return updated ?? app;
+  }
 
   /**
    * Pre-deploy snapshot hook: enqueues a Velero scoped Backup for the app
@@ -226,8 +265,10 @@ export class ApplicationDeployProcessor {
         cluster.kubeconfigEncrypted,
       );
 
+      const placedApp = await this.ensureDedicatedPlacement(app);
+
       // If rollback, restore config from target revision
-      let appForManifests = app;
+      let appForManifests = placedApp;
       if (deployType === 'rollback' && rollbackRevisionNumber) {
         appForManifests = await this.restoreFromRevision(
           app,

@@ -265,6 +265,11 @@ export type CatalogPersistenceScope = 'shared' | 'dedicated';
 
 export interface CatalogPersistence {
   scope: CatalogPersistenceScope;
+  /**
+   * When `scope=dedicated`, allow the app to schedule on the master
+   * (control-plane) node instead of a worker. Defaults to false.
+   */
+  allowMaster?: boolean;
 }
 
 export interface CatalogEnvVar {

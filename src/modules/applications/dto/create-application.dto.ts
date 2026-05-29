@@ -269,11 +269,19 @@ export class CreateApplicationDto {
 
   @ApiPropertyOptional({
     description:
-      'Target k8s node name when `persistenceScope=dedicated`. If omitted, the app is pinned to the master (control-plane) node. When set, the named worker becomes "locked" (no drain, no scale-down) for as long as it hosts the app.',
+      'Target k8s node name when `persistenceScope=dedicated`. If omitted, the app is auto-pinned at deploy time to the worker with the most free capacity. When set, the named node becomes "locked" (no drain, no scale-down) for as long as it hosts the app.',
   })
   @IsOptional()
   @IsString()
   dedicatedNodeName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'When `persistenceScope=dedicated`, allow the app to schedule on the master (control-plane) node instead of a worker. Defaults to false — dedicated apps are confined to workers, and a deploy fails loudly if no worker exists.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowMasterPlacement?: boolean;
 
   @ApiPropertyOptional({
     description:

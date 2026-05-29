@@ -229,34 +229,24 @@ export class ApplicationEntity {
   isFluiManaged: boolean;
 
   /**
-   * Placement strategy for the app's PersistentVolumeClaims.
-   *
-   * - `shared` (default): pods can run anywhere; PVCs land on the cluster
-   *   flui-shared (NFS) layer. Safe for stateless apps and light file I/O.
-   * - `dedicated`: pods pin to the master node so writes hit the backing
-   *   Volume directly (no NFS hop). Required for databases (Postgres,
-   *   MariaDB, MongoDB, …) where NFS breaks fsync/locking semantics.
-   *
-   * Source: catalog manifest `spec.persistence.scope`, defaulting to
-   * `shared` when missing.
+   * `shared` (default): PVCs ride the cluster flui-shared (NFS) layer, pods run
+   * anywhere. `dedicated`: pod pins to a worker's local disk (no NFS hop) —
+   * required by databases where NFS breaks fsync/locking. Source: catalog
+   * `spec.persistence.scope`.
    */
   @Column({ type: 'varchar', length: 16, default: 'shared' })
   persistenceScope: 'shared' | 'dedicated';
 
   /**
-   * Target node for `persistenceScope=dedicated` workloads.
-   *
-   * - `null` (default) → pinned to the master node via the standard
-   *   `node-role.kubernetes.io/control-plane` selector + tolerations.
-   * - explicit kubernetes node name → pinned to that specific worker via
-   *   `kubernetes.io/hostname=<name>`. The node hosting at least one
-   *   dedicated app is considered "locked" by the cluster scaling
-   *   primitives (cannot be drained nor scale-downed).
-   *
-   * Ignored when `persistenceScope=shared`.
+   * Worker hosting a `dedicated` app, locked against drain/scale-down while it
+   * lives there. Null until the deploy auto-assigns the roomiest worker.
    */
   @Column({ type: 'varchar', length: 253, nullable: true })
   dedicatedNodeName?: string;
+
+  /** Let a `dedicated` app schedule on the master instead of a worker. */
+  @Column({ default: false })
+  allowMasterPlacement: boolean;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

@@ -320,8 +320,9 @@ export class ApplicationManifestGeneratorService {
     const labels = this.buildLabels(app);
     const size = volume.size ?? '1Gi';
 
-    const storageClassBlock = volume.storageClass
-      ? `  storageClassName: ${volume.storageClass}`
+    const storageClass = this.resolveStorageClass(app, volume);
+    const storageClassBlock = storageClass
+      ? `  storageClassName: ${storageClass}`
       : '';
 
     const template = this.loadTemplate('pvc.yaml');
@@ -371,6 +372,20 @@ export class ApplicationManifestGeneratorService {
     return `      imagePullSecrets:\n        - name: ${secretName}`;
   }
 
+  /**
+   * Dedicated apps default to the node-local `flui-local` class so writes hit
+   * the worker's own disk even when the default `local-path` is NFS-backed. An
+   * explicit per-volume class always wins.
+   */
+  private resolveStorageClass(
+    app: ApplicationEntity,
+    volume: ApplicationVolume,
+  ): string | undefined {
+    if (volume.storageClass) return volume.storageClass;
+    if (app.persistenceScope === 'dedicated') return 'flui-local';
+    return undefined;
+  }
+
   private renderNodePlacementBlock(app: ApplicationEntity): string {
     if (app.persistenceScope !== 'dedicated') return '';
     if (app.dedicatedNodeName) {
@@ -379,17 +394,21 @@ export class ApplicationManifestGeneratorService {
         `        kubernetes.io/hostname: "${app.dedicatedNodeName}"`
       );
     }
-    return (
-      '      nodeSelector:\n' +
-      '        node-role.kubernetes.io/control-plane: "true"\n' +
-      '      tolerations:\n' +
-      '        - key: node-role.kubernetes.io/control-plane\n' +
-      '          operator: Exists\n' +
-      '          effect: NoSchedule\n' +
-      '        - key: node-role.kubernetes.io/master\n' +
-      '          operator: Exists\n' +
-      '          effect: NoSchedule'
-    );
+    // master escape hatch — workers are assigned via dedicatedNodeName above
+    if (app.allowMasterPlacement) {
+      return (
+        '      nodeSelector:\n' +
+        '        node-role.kubernetes.io/control-plane: "true"\n' +
+        '      tolerations:\n' +
+        '        - key: node-role.kubernetes.io/control-plane\n' +
+        '          operator: Exists\n' +
+        '          effect: NoSchedule\n' +
+        '        - key: node-role.kubernetes.io/master\n' +
+        '          operator: Exists\n' +
+        '          effect: NoSchedule'
+      );
+    }
+    return '';
   }
 
   /**
@@ -547,8 +566,9 @@ export class ApplicationManifestGeneratorService {
         `        accessModes:`,
         `          - ReadWriteOnce`,
       );
-      if (v.storageClass) {
-        lines.push(`        storageClassName: ${v.storageClass}`);
+      const storageClass = this.resolveStorageClass(app, v);
+      if (storageClass) {
+        lines.push(`        storageClassName: ${storageClass}`);
       }
       lines.push(
         `        resources:`,

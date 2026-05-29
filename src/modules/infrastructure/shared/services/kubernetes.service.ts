@@ -1479,6 +1479,78 @@ export class KubernetesService {
   }
 
   /**
+   * Allocatable, requested and free resources for every READY worker node
+   * (nodes without the control-plane/master label). CPU in millicores, mem Mi.
+   */
+  async listWorkerNodeCapacities(kubeconfigContent: string): Promise<
+    Array<{
+      nodeName: string;
+      allocatable: { cpu: number; memory: number };
+      requested: { cpu: number; memory: number };
+      free: { cpu: number; memory: number };
+    }>
+  > {
+    const { coreApi } = this.getKubeClient(kubeconfigContent);
+    const nodes = await coreApi.listNode();
+    const pods = await coreApi.listPodForAllNamespaces();
+
+    return (nodes.items ?? [])
+      .filter((n) => this.isReadyWorker(n))
+      .map((node) => {
+        const nodeName = node.metadata?.name ?? '';
+        const alloc = node.status?.allocatable ?? {};
+        const allocatable = {
+          cpu: this.parseCpu(alloc['cpu'] ?? '0'),
+          memory: this.parseMemory(alloc['memory'] ?? '0'),
+        };
+        const requested = this.sumPodRequestsOnNode(pods.items ?? [], nodeName);
+        return {
+          nodeName,
+          allocatable,
+          requested,
+          free: {
+            cpu: allocatable.cpu - requested.cpu,
+            memory: allocatable.memory - requested.memory,
+          },
+        };
+      });
+  }
+
+  private isReadyWorker(node: k8s.V1Node): boolean {
+    const labels = node.metadata?.labels ?? {};
+    if (
+      'node-role.kubernetes.io/control-plane' in labels ||
+      'node-role.kubernetes.io/master' in labels
+    ) {
+      return false;
+    }
+    if (!node.metadata?.name) return false;
+    const ready = (node.status?.conditions ?? []).find(
+      (c) => c.type === 'Ready',
+    );
+    return ready?.status === 'True';
+  }
+
+  private sumPodRequestsOnNode(
+    pods: k8s.V1Pod[],
+    nodeName: string,
+  ): { cpu: number; memory: number } {
+    let cpu = 0;
+    let memory = 0;
+    for (const pod of pods) {
+      if (pod.spec?.nodeName !== nodeName) continue;
+      const phase = pod.status?.phase;
+      if (phase !== 'Running' && phase !== 'Pending') continue;
+      for (const container of pod.spec?.containers ?? []) {
+        const requests = container.resources?.requests ?? {};
+        cpu += this.parseCpu(requests['cpu'] ?? '0');
+        memory += this.parseMemory(requests['memory'] ?? '0');
+      }
+    }
+    return { cpu, memory };
+  }
+
+  /**
    * Parse a Kubernetes CPU string to millicores.
    * Examples: "250m" → 250, "2" → 2000, "0.5" → 500
    */

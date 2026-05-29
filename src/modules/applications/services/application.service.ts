@@ -137,6 +137,7 @@ export class ApplicationService {
       workloadKind: dto.workloadKind ?? 'Deployment',
       persistenceScope: dto.persistenceScope ?? 'shared',
       dedicatedNodeName: dto.dedicatedNodeName ?? null,
+      allowMasterPlacement: dto.allowMasterPlacement ?? false,
       startCommand: dto.startCommand,
       labels: dto.labels || {},
       metadata: dto.metadata || {},
@@ -634,6 +635,7 @@ export class ApplicationService {
     dto.workloadKind = entity.workloadKind ?? 'Deployment';
     dto.persistenceScope = entity.persistenceScope ?? 'shared';
     dto.dedicatedNodeName = entity.dedicatedNodeName ?? null;
+    dto.allowMasterPlacement = entity.allowMasterPlacement ?? false;
     dto.labels = entity.labels;
     dto.metadata = entity.metadata;
     dto.buildPath = entity.buildPath;

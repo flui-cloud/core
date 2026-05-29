@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ClusterEntity,
   ClusterStatus,
-  ClusterType,
+  isControlClusterType,
 } from 'src/modules/infrastructure/clusters/entities/cluster.entity';
 import {
   NodeType,
@@ -191,8 +191,7 @@ export class CliClusterCreatorService {
         provider: cluster.provider,
         caPublicKey,
         operationId: operation.id,
-        deployObservabilityStack:
-          cluster.clusterType === ClusterType.OBSERVABILITY,
+        deployObservabilityStack: isControlClusterType(cluster.clusterType),
         postgresPassword,
         redisPassword,
         grafanaPassword,
@@ -321,7 +320,7 @@ export class CliClusterCreatorService {
       });
 
       // Step 3c: Informational — Zitadel PAT injected on demand via sync-auth-domain
-      if (cluster.clusterType === ClusterType.OBSERVABILITY) {
+      if (isControlClusterType(cluster.clusterType)) {
         this.log(
           opId,
           'ℹ️  Zitadel service account PAT will be injected when sync-auth-domain is called.',

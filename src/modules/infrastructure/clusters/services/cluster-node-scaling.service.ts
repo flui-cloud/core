@@ -477,8 +477,8 @@ export class ClusterNodeScalingService {
         code: 'NODE_LOCKED_BY_DEDICATED_APPS',
         message:
           `Node ${node.serverName} hosts ${apps.length} dedicated workload(s) ` +
-          `(${apps.map((a) => a.slug).join(', ')}). Move them with ` +
-          `\`flui app placement <slug> --node <other>\` or delete the apps before removing this worker.`,
+          `(${apps.map((a) => a.slug).join(', ')}). Back up their data, then delete ` +
+          `or redeploy these apps before removing this worker.`,
         details: { affectedApps: apps.map((a) => a.slug) },
       });
     }
